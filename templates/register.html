@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Register</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    <script>
+        function togglePasswordVisibility() {
+            const passwordInput = document.getElementById('password');
+            const toggleIcon = document.getElementById('toggle-password');
+        
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text'; // Show the password
+                toggleIcon.src = "{{ url_for('static', filename='images/eye_open.png') }}"; // Open eye
+            } else {
+                passwordInput.type = 'password'; // Hide the password
+                toggleIcon.src = "{{ url_for('static', filename='images/eye_closed.png') }}"; // Closed eye
+            }
+        }
+    </script>
+</head>
+<body>
+    {% include 'nav.html' %}
+    <div class="auth">
+        <form method="POST">
+            <h1>Sign Up</h1>
+            {{ form.hidden_tag() }}
+            <p>
+                {{ form.username.label }}<br>
+                {{ form.username(size=32) }}
+            </p>
+            <p>
+                {{ form.email.label }}<br>
+                {{ form.email(size=32) }}
+            </p>
+            <p style="position: relative;">
+                {{ form.password.label }}<br>
+                {{ form.password(size=32, id='password') }}
+                <!-- Eye icon to toggle password visibility -->
+                <img
+                    id="toggle-password"
+                    src="{{ url_for('static', filename='images/eye_closed.png') }}"
+                    alt="Toggle Password Visibility"
+                    class="eye-icon"
+                    onclick="togglePasswordVisibility()"
+                />
+            </p>
+            <p>
+                {{ form.submit() }}
+            </p>
+        </form>
+        <a href="{{ url_for('login') }}">Already have an account? Sign in.</a>
+    </div>
+</body>
+</html>

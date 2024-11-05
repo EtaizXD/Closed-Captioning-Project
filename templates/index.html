@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CC Stress</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+    <!-- Include the navigation section -->
+    {% include 'nav.html' %}
+
+    <div>
+        <h1 class="header">Closed <u>Cap</u>tions <br> with Stressed <u>Syl</u>lable <u>High</u>lights</h1>
+        <p class="description">
+            An online audio transcription engine to generate <br> closed caption files with stressed syllables being highlighted.
+        </p>
+        
+        <!-- Display error message, if any -->
+        {% if session.get('message') %}
+        <div class="alert alert-danger" role="alert">
+            {{ session['message'] }}
+        </div>
+        {% endif %} 
+        <!-- Clear session message after displaying -->
+        {% set _ = session.pop('message', None) %}
+
+        <!-- File upload form (initially hidden) -->
+        <form id="uploadForm" method="POST" enctype="multipart/form-data" action="{{ url_for('home') }}">
+            {{ form.hidden_tag() }}
+            <input type="file" name="file" id="fileInput" style="display: none;"> <!-- Hidden input for file upload -->
+        </form>
+
+        <!-- Upload button with authentication check -->
+        {% if current_user.is_authenticated %}
+            <p>Welcome, {{ current_user.username }}!</p>
+            
+            <button id="selectFileButton">Upload audio file</button>
+            {% else %}
+            <button id="loginButton">Sign In to upload audio file</button>
+            {% endif %}
+            
+            <button id="selectFileButton">Upload audio file</button>
+        <!-- JavaScript handling for button actions -->
+        <script>
+            // Redirect to login if not authenticated
+            document.getElementById("loginButton").addEventListener("click", function () {
+                window.location.href = "{{ url_for('login', next=url_for('home')) }}";
+            });
+            
+                // Trigger file input click to open file dialog
+                document.getElementById("selectFileButton").addEventListener("click", function () {
+                    console.log("Button clicked"); // To verify the click is detected
+                    document.getElementById("fileInput").click(); // Show the file dialog
+                });
+
+                // Submit the form when a file is selected
+                document.getElementById("fileInput").addEventListener("change", function () {
+                    console.log("File selected"); // To verify the change event
+                    document.getElementById("uploadForm").submit(); // Submit the form on file selection
+                });
+        </script>
+    </div>
+</body>
+</html>

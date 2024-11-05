@@ -1,0 +1,26 @@
+<!-- nav.html -->
+<nav>
+  <ul>
+    {% if current_user.is_authenticated %}
+      <li><a href="/upload"><img src="{{ url_for('static', filename='images/cc.png') }}" style="width: 50px; height: auto;"></a></li>
+    {% else %}
+      <li><a href="/"><img src="{{ url_for('static', filename='images/cc.png') }}" style="width: 50px; height: auto;"></a></li>
+    {% endif %}
+    
+    <!-- If the user is authenticated, show Logout; otherwise, show Login and Register -->
+    {% if current_user.is_authenticated %}
+      <li style="float: right"><a href="{{ url_for('logout') }}">Sign Out</a></li>
+    {% else %}
+      <li style="float: right"><a href="{{ url_for('login') }}">Sign In</a></li>
+      <!-- <li style="float: right"><a href="{{ url_for('register') }}">Register</a></li> -->
+    {% endif %}
+    
+    <!-- Common links like 'About' and 'Contact' -->
+    <li style="float: right"><a href="{{ url_for('about') }}">About</a></li>
+    <li style="float: right"><a href="https://ca-t.psu.ac.th/" target="_blank">Contact</a></li>
+    
+    {% if current_user.is_authenticated %}
+      <li style="float: right"><a href="{{ url_for('your_files') }}">Files</a></li>
+    {% endif %}
+  </ul>
+</nav>

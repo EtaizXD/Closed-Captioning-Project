@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CC Stress</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+    <!-- Include the navigation section -->
+    {% include 'nav.html' %}
+
+    <div>
+        <h1 class="header">Closed <u>Cap</u>tions <br> with Stressed <u>Syl</u>lable <u>High</u>lights</h1>
+        <p class="description">
+            An online audio transcription engine to generate <br> closed caption files with stressed syllables being highlighted.
+        </p>
+        
+        <!-- Button for login -->
+        <button id="loginButton">Sign in to upload audio file</button>
+
+        <!-- JavaScript handling for button actions -->
+        <script>
+            // Redirect to login if not authenticated
+            document.getElementById("loginButton").addEventListener("click", function () {
+                window.location.href = "{{ url_for('login') }}";  // Corrected
+            });
+
+        </script>
+    </div>
+</body>
+</html>

@@ -1,0 +1,322 @@
+* {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+nav {
+  padding: 30px 30px 0 30px;
+}
+
+ul {
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+li {
+  float: left;
+}
+
+li a {
+  display: block;
+  color: #000000;
+  text-align: center;
+  font-size: 20px;
+  padding: 14px 28px;
+  text-decoration: none;
+}
+
+li a:hover:not(.active) {
+  background-color: #eaeaea;
+  border-radius: 30px;
+}
+
+div {
+  text-align: center;
+  padding: 10px;
+}
+
+.header {
+  font-size: 60px;
+  margin: 100px 0 60px 0 ;
+
+}
+
+.description {
+  font-size: 28px;
+  color: #6e6e6e;
+  margin-bottom: 40px;
+}
+
+.button, #selectFileButton, #saveAndDownloadButton {
+  background-color: #0080ff;
+  border: none;
+  border-radius: 30px;
+  color: white;
+  padding: 15px 32px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+}
+
+.button, #selectFileButton ,#saveAndDownloadButton{
+  transition-duration: 0.4s;
+}
+
+.button:hover, #selectFileButton , #saveAndDownloadButton{
+  background-color: #0060c1;
+  /* Green */
+  color: white;
+}
+
+#selectFileButton , #loginButton, #saveAndDownloadButton{
+  margin: 0;
+  background-color: #0080ff;
+  border: none;
+  border-radius: 60px;
+  color: white;
+  padding: 18px 60px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#selectFileButton:hover ,#loginButton:hover, #saveAndDownloadButton:hover{
+  background-color: #0060c1;
+}
+
+input[type=submit]{
+  margin: 0;
+  background-color: #0080ff;
+  border: none;
+  border-radius: 60px;
+  color: white;
+  padding: 10px 103px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+form {
+  margin: 0; /* No extra margin around the form */
+}
+
+form p {
+  margin: 30px 0; /* Spacing between form elements */
+}
+
+input {
+  width: 28%; /* Full width inputs */
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+input[type=submit]:hover {
+  background-color: #006fde;
+}
+
+input::file-selector-button {
+  background-color: #ffffff;
+  border: none;
+  border-radius: 60px;
+  color: rgb(0, 0, 0);
+  padding: 18px 60px;
+  text-align: center;
+  text-decoration: none;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+textarea {
+  width: 50%;
+  height: 500px;
+  padding: 10px;
+  font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  resize: vertical;
+  margin: 0 auto; /* Center the textarea horizontally */
+  display: block; /* Ensure it behaves as a block element */
+}
+
+.auth {
+  display: flex;           /* Using Flexbox */
+  flex-direction: column;  /* Vertical layout */
+  align-items: center;     /* Centering elements horizontally */
+}
+
+.auth a {
+  color: #000000; /* Link color */
+  text-decoration: none; /* No underline by default */
+}
+
+.auth a:hover {
+  color: #1450b7; /* Link color */
+  text-decoration: underline; /* Underline on hover */
+}
+
+.auth {
+  display: flex;           /* Enable Flexbox for centering */
+  flex-direction: column;  /* Column layout for centering vertically */
+  justify-content: center; /* Center vertically */
+  align-items: center;     /* Center horizontally */
+}
+
+/* Style the form elements for alignment and spacing */
+/* Form elements for alignment and spacing */
+form {
+  display: flex;           /* Using Flexbox for form alignment */
+  flex-direction: column;  /* Vertical stacking of form elements */
+  align-items: flex-start; /* Align elements to the left */
+}
+
+form p {
+  display: flex;           /* Flexbox for internal layout */
+  flex-direction: column;  /* Vertical layout within 'p' */
+  align-items: flex-start; /* Align elements to the left */
+  margin-bottom: 1rem;     /* Spacing between form fields */
+}
+/* Adjust the label spacing */
+form p label {
+  margin-bottom: 0.5rem;   /* Space between label and input */
+}
+
+/* Adjust input fields to maintain width and styling */
+form p input {
+  width: 100%;             /* Make input full-width within its parent */
+  box-sizing: border-box;  /* Ensure padding and borders are included in width */
+  flex-grow: 1;            /* Allow inputs to expand if needed */
+  padding: 10px;           /* Padding within input */
+  border-radius: 60px;      /* Keep input borders rounded */
+  border: none;
+  background-color: #ececec;
+}
+
+.auth h1 {
+  align-self: flex-start;  /* Align header to the start/left */
+}
+
+input[type='checkbox'] {
+  cursor: pointer;         /* Change cursor to pointer for interactivity */
+}
+
+.eye-icon {
+  position: absolute;
+  right: 10px;  
+  top: 53px;    
+  cursor: pointer; 
+  width: 20px;  
+  height: 20px; 
+}
+
+.eye-icon:hover {
+  opacity: 0.5; 
+}
+
+.table-container {
+  overflow-x: auto;
+  margin: 20px;
+  padding: 0;
+}
+
+table {
+  width: 95%;
+  margin: 20px auto;
+  border-collapse: collapse;
+  background-color: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+th, td {
+  padding: 15px;
+  text-align: left;
+  border: 1px solid #e0e0e5;
+}
+
+th {
+  background-color: #f7f7f8;
+  color: #1c1c1e;
+  font-weight: 600;
+}
+
+tr:nth-child(even) {
+  background-color: #f9f9fb;
+}
+
+tr:hover {
+  background-color: #e5e5ea;
+}
+
+.action-button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s ease;
+  color: white;
+  margin: 0 5px;
+}
+
+.download {
+  background-color: #0080ff;
+}
+
+.download:hover {
+  background-color: #0060c1;
+}
+
+.edit {
+  background-color: #28a745;
+}
+
+.edit:hover {
+  background-color: #218838;
+}
+
+.delete {
+  background-color: #dc3545;
+}
+
+.delete:hover {
+  background-color: #c82333;
+}
+
+audio {
+  width: 250px;
+  height: 40px;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 20px 0;
+  padding: 10px;
+}
+
+.page-button {
+  padding: 8px 16px;
+  border: 1px solid #0080ff;
+  border-radius: 20px;
+  color: #0080ff;
+  text-decoration: none;
+  transition: all 0.3s ease;
+}
+
+.page-button:hover,
+.page-button.active {
+  background-color: #0080ff;
+  color: white;
+}
