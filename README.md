@@ -14,7 +14,7 @@ A Python-based web application for generating intelligent English closed caption
 ## Technology Stack
 - Python
 - Whisper AI
-- Web Technologies (Frontend details to be added)
+- Web Technologies 
 
 ## Project Status
 This is an ongoing development project for the Research Center for Language, Culture and Human Development in Lower ASEAN, Faculty of Liberal Arts, Prince of Songkla University.
@@ -45,19 +45,11 @@ Development Period: October 8 - November 8, 2024
 - Video tutorials for system usage
 
 ## Installation
-(To be added during development)
-
-## Usage
-(To be added during development)
+- requirements.txt
 
 ## Documentation
-- User manual available
 - Video tutorials for general users
 - Technical documentation for different departments
 
-## Project Scope
-This project is developed under contract for the Research Center for Language, Culture and Human Development in Lower ASEAN, Faculty of Liberal Arts, Prince of Songkla University, focusing on enhancing English language teaching through improved video caption generation.
 
 ---
-
-For more information, please contact the project coordinator (contact details to be added).
