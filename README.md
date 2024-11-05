@@ -16,11 +16,6 @@ A Python-based web application for generating intelligent English closed caption
 - Whisper AI
 - Web Technologies 
 
-## Project Status
-This is an ongoing development project for the Research Center for Language, Culture and Human Development in Lower ASEAN, Faculty of Liberal Arts, Prince of Songkla University.
-
-Development Period: October 8 - November 8, 2024
-
 ## Key Objectives
 1. Enhance system efficiency and stability
 2. Improve caption file management capabilities
