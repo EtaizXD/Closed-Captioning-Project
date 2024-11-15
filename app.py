@@ -221,6 +221,18 @@ def edit(audio_id):
             return redirect(url_for("your_files"))
 
         vtt_content = result[0]  # Assuming vtt_content is the first column returned
+        
+        # แก้ไข vtt_content ให้ WEBVTT อยู่ชิดซ้าย
+        if vtt_content:
+            lines = vtt_content.split('\n')
+            # หาบรรทัดที่มีคำว่า WEBVTT
+            for i, line in enumerate(lines):
+                if 'WEBVTT' in line:
+                    # แทนที่บรรทัดนั้นด้วย WEBVTT ที่ไม่มี whitespace
+                    lines[i] = 'WEBVTT'
+                    break
+            # รวมกลับเป็น string
+            vtt_content = '\n'.join(lines)
 
         return render_template("edit.html", audio_id=audio_id, vtt_content=vtt_content)
 
@@ -276,6 +288,26 @@ def download_vtt(audio_id):
         return redirect(url_for("your_files"))
 
     vtt_content = result[0]
+    
+    # แก้ไข format ของ VTT content
+    if vtt_content:
+        lines = vtt_content.splitlines()
+        new_lines = []
+        webvtt_line = None
+        
+        # แยก WEBVTT ออกมาก่อน
+        for line in lines:
+            if 'WEBVTT' in line:
+                webvtt_line = 'WEBVTT'
+            else:
+                new_lines.append(line.rstrip())
+        
+        # สร้าง content ใหม่โดยเริ่มด้วย WEBVTT
+        final_content = ['WEBVTT']  # เริ่มด้วย WEBVTT
+        final_content.extend(new_lines)  # เพิ่มเนื้อหาที่เหลือ
+        
+        # รวมกลับเป็น string
+        vtt_content = '\n'.join(final_content)
 
     response = make_response(vtt_content)
     response.headers["Content-Disposition"] = (
@@ -474,6 +506,8 @@ def upload():
                 # Read the VTT file content
                 with open(vtt_file_name, "r") as vtt_file:
                     vtt_content = vtt_file.read()
+                    # ลบ whitespace ก่อนเก็บในฐานข้อมูล
+                    vtt_content = vtt_content.lstrip()
 
                 # Insert audio file into DB and get audio_id
                 audio_id = insert_audio_file_to_db(

@@ -238,12 +238,22 @@ class SentenceRecognizer:
         return formatted_sentences
 
     def write_vtt(self, vtt_filename, formatted_sentences):
+        # เตรียมเนื้อหาทั้งหมด
+        content = []
+        # เริ่มด้วย WEBVTT ที่ชิดซ้าย (ไม่มี whitespace)
+        content.append("WEBVTT\n")
+        content.append("\n")
+        
+        # เพิ่มเนื้อหาที่เหลือ
+        for index, (start, end, text) in enumerate(formatted_sentences, start=1):
+            content.append(f"{index}\n")
+            content.append(f"{format_time(start)} --> {format_time(end)}\n")
+            content.append(f"{text} (.)\n")
+            content.append("\n")
+        
+        # เขียนเนื้อหาลงไฟล์
         with open(vtt_filename, "w") as f:
-            f.write("WEBVTT\n\n")
-            for index, (start, end, text) in enumerate(formatted_sentences, start=1):
-                f.write(f"{index}\n")
-                f.write(f"{format_time(start)} --> {format_time(end)}\n")
-                f.write(f"{text} (.)\n\n")
+            f.writelines(content)
 
     def generate_vtt(self, vtt_filename):
         self.collect_data()
