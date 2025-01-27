@@ -4,401 +4,220 @@ import json
 import numpy as np
 import nltk
 from nltk.corpus import cmudict
-import parselmouth
-from pydub import AudioSegment
-import librosa
 from audio_analyzer import AudioAnalyzer
 
-# Ensure nltk resources are downloaded
 nltk.download("cmudict")
-
-# Load CMU Pronouncing Dictionary
 pronouncing_dict = cmudict.dict()
 
-# Dictionary of word-to-number mappings
-word_to_number = {
-    "zero": "0",
-    "one": "1",
-    "two": "2",
-    "three": "3",
-    "four": "4",
-    "five": "5",
-    "six": "6",
-    "seven": "7",
-    "eight": "8",
-    "nine": "9",
-}
-
-
-# Helper function to format time for VTT files
 def format_time(seconds):
+    """Helper function to format time for VTT files"""
     milliseconds = int(seconds * 1000)
     seconds = int(seconds)
     minutes, seconds = divmod(seconds, 60)
     hours, minutes = divmod(minutes, 60)
-    return "{:02d}:{:02d}:{:02d}.{:03d}".format(
-        hours, minutes, seconds, milliseconds % 1000
-    )
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
 
-
-# Main class for sentence recognition and VTT generation
 class SentenceRecognizer:
-
     def __init__(self, audio_file, json_file):
         self.audio_file = audio_file
         self.json_file = json_file
         self.text_sentences = []
         self.sentences = []
 
-    def sentence_recognition(self):
-        command = f'whisper "{self.audio_file}" --model medium.en --word_timestamps True --highlight_words True'
-        os.popen(command).read()
-
     def collect_data(self):
-        with open(self.json_file, "r") as f:
+        """Collect data from JSON file while preserving original text"""
+        with open(self.json_file, "r", encoding='utf-8') as f:
             data = json.load(f)
         for segment in data["segments"]:
-            words_data = self._extract_words(segment)
-            self.sentences.extend(words_data)
+            # Store original text
             self.text_sentences.append(segment["text"])
+            
+            # Process words for stress detection only
+            words_data = self._extract_words(segment)
+            if words_data:
+                self.sentences.extend(words_data)
 
     def _extract_words(self, segment):
-        audio_analyzer = AudioAnalyzer(self.audio_file)
-        words_in_sentence = []
-        all_words = []
-        for idx, word_info in enumerate(segment["words"]):
-            word = self._format_word(word_info["word"].strip())
-            start = word_info["start"]
-            end = word_info["end"]
+        """Extract words while preserving original text and timing"""
+        try:
+            audio_analyzer = AudioAnalyzer(self.audio_file)
+            words_in_sentence = []
+            all_words = []
 
-            if start == end:
-                end += 0.01  # Ensure a valid time range
+            for word_info in segment["words"]:
+                # Keep original word text but clean for stress analysis
+                original_word = word_info["word"]
+                analysis_word = self._clean_for_analysis(original_word)
+                
+                start = word_info["start"]
+                end = word_info["end"]
+                
+                # Ensure valid time range
+                if start == end:
+                    end += 0.01
 
-            amp = audio_analyzer._calculate_average_amplitude(start, end)
-            syllable_count = self._get_syllable_count(word)
+                # Calculate amplitude for stress detection
+                amp = audio_analyzer._calculate_average_amplitude(start, end)
+                if amp is not None:
+                    words_in_sentence.append({
+                        'original': original_word,
+                        'analysis': analysis_word,
+                        'start': start,
+                        'end': end,
+                        'amplitude': amp
+                    })
 
-            if self._check_space(word):
-                words_list = word.split()
-                time_avg = (end - start) / len(words_list)
-
-                for sub_word in words_list:
-                    sub_word = self._replace_words_with_numbers(sub_word)
-                    sub_start = start
-                    sub_end = start + time_avg
-                    sub_amp = audio_analyzer._calculate_average_amplitude(
-                        sub_start, sub_end
-                    )
-                    word_tuple = (sub_word, sub_start, sub_end, sub_amp)
-                    words_in_sentence.append(word_tuple)
-                    start += time_avg
-            else:
-                word_tuple = (word, start, end, amp)
-                words_in_sentence.append(word_tuple)
-
-            if (
-                self._contains_punctuation(word_info["word"])
-                or idx == len(segment["words"]) - 1
-            ):
+            if words_in_sentence:
                 all_words.append(words_in_sentence)
-                words_in_sentence = []
 
-        if words_in_sentence:
-            all_words.append(words_in_sentence)
+            return all_words
 
-        return all_words
+        except Exception as e:
+            print(f"Error in _extract_words: {str(e)}")
+            return []
 
-    def _format_word(self, word):
-        replacements = {
-            "!": "",
-            ".": "",
-            ",": "",
-            "?": "",
-            "-": "",
-            "0": "zero ",
-            "1": "one ",
-            "2": "two ",
-            "3": "three ",
-            "4": "four ",
-            "5": "five ",
-            "6": "six ",
-            "7": "seven ",
-            "8": "eight ",
-            "9": "nine ",
-        }
-        for char, replacement in replacements.items():
-            word = word.replace(char, replacement)
-        return word.strip()
-
-    def _check_space(self, word):
-        return " " in word
-
-    def _contains_punctuation(self, word):
-        punctuation_marks = [".", "?", "!"]
-        return any(char in punctuation_marks for char in word)
-
-    def _replace_words_with_numbers(self, word):
-        for char, replacement in word_to_number.items():
-            word = word.replace(char, replacement)
-        return word.strip()
-
-    def _get_syllable_count(self, word):
-        if word.lower() in pronouncing_dict:
-            pronunciation = pronouncing_dict[word.lower()][0]
-            syllable_count = sum(
-                1 for phoneme in pronunciation if phoneme[-1].isdigit()
-            )
-            return syllable_count
-        return None
-
-    def split_text(self):
-        result = []
-        pattern = r"([.?!])"
-
-        for text in self.text_sentences:
-            split_texts = re.split(pattern, text)
-
-            # If there's a trailing sentence without punctuation, add it to the list
-            if len(split_texts) % 2 != 0:
-                split_texts.append("")
-
-            sentences = [
-                "".join(pair).strip()  # Join sentence with its punctuation
-                for pair in zip(split_texts[::2], split_texts[1::2])
-            ]
-
-            # Add all non-empty sentences to result
-            result.extend([s for s in sentences if s])
-
-        return result
-
-    def _get_stress_value(
-        self, sentence_amplitude, word_amplitude, sentence_pitch, word_pitch
-    ):
-        diff = sentence_amplitude - word_amplitude
-        percent = diff / sentence_amplitude * 100
-
-        if word_amplitude > (sentence_amplitude * 2):
-            return 1  # High pitch
-        elif word_amplitude >= sentence_amplitude:
-            return 1  # Primary stress
-        elif word_pitch > sentence_pitch and percent <= 20:
-            return 1  # Primary stress
-        else:
-            return 0  # Non-stress
-
-    def format_texts(self, texts, stress_lists):
-        formatted_texts = []
-        for text, stress_list in zip(texts, stress_lists):
-            formatted_text = self._apply_stress_formatting(text, stress_list)
-            formatted_texts.append(formatted_text)
-        return formatted_texts
-
-    def _apply_stress_formatting(self, texts, stress_list):
-        # print(stress_list)
-        formatted_result = []
-
-        # Index for keeping track of position in the text
-        text_index = 0
-
-        # Process each (word, stress) tuple in the stress list
-        for word, stress in stress_list:
-            # Find the start index of this word in the text
-            start = texts.find(word, text_index)
-            end = start + len(word)
-
-            # Add the text leading up to the word (if there are punctuation/symbols, preserve them)
-            formatted_result.append(texts[text_index:start])
-
-            # Format the word based on the stress value
-            if stress == 2:
-                formatted_word = f"<b>{word.upper()}</b>"
-            elif stress == 1:
-                formatted_word = f"<u>{word}</u>"
-            else:
-                formatted_word = word
-
-            # Add the formatted word to the result
-            formatted_result.append(formatted_word)
-
-            # Update text_index to the end of the current word
-            text_index = end
-
-        # Add any remaining text after the last word
-        formatted_result.append(texts[text_index:])
-        formatted_html = "".join(formatted_result)
-        # Join all parts to create the final formatted string
-        return formatted_html.strip()
-
-    def combine_texts_with_timing(self, formatted_texts, sentence_data):
-        formatted_sentences = []
-        for formatted_text, sentence in zip(formatted_texts, sentence_data):
-            start_time = sentence[0][1]
-            end_time = sentence[-1][2]
-            formatted_sentences.append((start_time, end_time, formatted_text))
-        return formatted_sentences
-
-    def write_vtt(self, vtt_filename, formatted_sentences):
-        # เตรียมเนื้อหาทั้งหมด
-        content = []
-        # เริ่มด้วย WEBVTT ที่ชิดซ้าย (ไม่มี whitespace)
-        content.append("WEBVTT\n")
-        content.append("\n")
-        
-        # เพิ่มเนื้อหาที่เหลือ
-        for index, (start, end, text) in enumerate(formatted_sentences, start=1):
-            content.append(f"{index}\n")
-            content.append(f"{format_time(start)} --> {format_time(end)}\n")
-            content.append(f"{text} (.)\n")
-            content.append("\n")
-        
-        # เขียนเนื้อหาลงไฟล์
-        with open(vtt_filename, "w") as f:
-            f.writelines(content)
-
-    def generate_vtt(self, vtt_filename):
-        self.collect_data()
-        texts = self.split_text()
-        stress_lists = self._calculate_stress()
-        # print(stress_lists)
-        formatted_texts = self.format_texts(texts, stress_lists)
-        formatted_sentences = self.combine_texts_with_timing(
-            formatted_texts, self.sentences
-        )
-        self.write_vtt(vtt_filename, formatted_sentences)
+    def _clean_for_analysis(self, word):
+        """Clean word for stress analysis only"""
+        # Remove punctuation for analysis but keep word intact
+        analysis_word = re.sub(r'[^\w\s]', '', word)
+        return analysis_word.strip().lower()
 
     def _calculate_stress(self):
-        audio_analyzer = AudioAnalyzer(self.audio_file)
-        stress_lists = []
-        for sentence in self.sentences:
+        """Calculate stress values based purely on audio analysis"""
+        try:
+            audio_analyzer = AudioAnalyzer(self.audio_file)
+            stress_lists = []
 
-            sentence_amplitude = audio_analyzer._calculate_average_amplitude(
-                sentence[0][1], sentence[-1][2]
-            )
-            pitch_avg_sentence = audio_analyzer._get_pitch_avg(
-                sentence[0][1], sentence[-1][2]
-            )
-            pitch_max_sentence = audio_analyzer._get_pitch_max(
-                sentence[0][1], sentence[-1][2]
-            )
-            pitch_top10_avg_sentence = audio_analyzer._get_pitch_top10_avg(
-                sentence[0][1], sentence[-1][2]
-            )
-            # print(f"AVG AMPLITUDE: {sentence_amplitude}")
-            # print(f"AVG PITCH: {pitch_avg_sentence}")
-            # print(f"PITCH MAX: {pitch_max_sentence}")
-            # print(f"PITCH TOP10: {pitch_top10_avg_sentence}")
+            for sentence in self.sentences:
+                if not sentence:
+                    continue
 
-            word_stress_list = []
-            for word_info in sentence:
-                word, start_time, end_time, amp = word_info
-                syllable_count = self._get_syllable_count(word)
+                # คำนวณค่าเฉลี่ยของประโยค
+                sent_start = sentence[0]['start']
+                sent_end = sentence[-1]['end']
+                sent_amp = audio_analyzer._calculate_average_amplitude(sent_start, sent_end)
+                sent_pitch = audio_analyzer._get_pitch_avg(sent_start, sent_end)
 
-                word_avg_pitch = audio_analyzer._get_pitch_avg(start_time, end_time)
+                # เก็บค่า amplitude ทั้งหมดเพื่อหาค่าสูงสุด
+                all_amps = [word_data['amplitude'] for word_data in sentence]
+                max_amp = max(all_amps) if all_amps else 0
 
-                if syllable_count and syllable_count > 1:
-                    syllables = self._split_word_into_syllables(word, syllable_count)
-                    # Calculate the average duration per syllable
-                    time_avg = (end_time - start_time) / syllable_count
+                word_stress_list = []
+                for word_data in sentence:
+                    # ใช้ข้อความดั้งเดิมที่มีช่องว่าง
+                    original_word = word_data['original']
+                    
+                    # คำนวณค่าต่างๆ สำหรับการวิเคราะห์
+                    word_amp = word_data['amplitude']
+                    word_pitch = audio_analyzer._get_pitch_avg(
+                        word_data['start'], 
+                        word_data['end']
+                    )
 
-                    sub_start = start_time
-                    for i, sub_word in enumerate(syllables):
-                        # If it's the last subword, use the original end time
-                        if i == len(syllables) - 1:
-                            sub_end = end_time
+                    # ตรวจสอบความดังและระดับเสียง
+                    stress = 0
+                    if word_amp > (sent_amp * 1.5) and word_amp >= (max_amp * 0.8):
+                        stress = 1
+                    elif word_pitch and sent_pitch and word_pitch > (sent_pitch * 1.4):
+                        stress = 1
+
+                    word_stress_list.append({
+                        'word': original_word.strip(),  # เก็บคำที่ไม่มีช่องว่างหน้า-หลัง
+                        'stress': stress
+                    })
+
+                if word_stress_list:
+                    stress_lists.append(word_stress_list)
+
+            return stress_lists
+
+        except Exception as e:
+            print(f"Error in _calculate_stress: {str(e)}")
+            return []
+
+    def _apply_stress_formatting(self, text, stress_list):
+        """Apply stress formatting while preserving whitespace"""
+        try:
+            if not text or not stress_list:
+                return text
+
+            result = []
+            current_pos = 0
+            
+            for word_data in stress_list:
+                word = word_data['word']
+                
+                if not word.strip():
+                    continue
+                    
+                # หาตำแหน่งของคำในข้อความ
+                word_pos = text.find(word, current_pos)
+                if word_pos == -1:
+                    continue
+                
+                # เพิ่มข้อความก่อนคำปัจจุบัน (รวมช่องว่าง)
+                result.append(text[current_pos:word_pos])
+                
+                # จัดการการขีดเส้นใต้โดยแยกพยางค์
+                if word_data['stress'] == 1:
+                    # แยกคำตามช่องว่าง
+                    parts = word.split()
+                    formatted_parts = []
+                    for part in parts:
+                        # ตรวจสอบว่าควรขีดเส้นใต้หรือไม่
+                        if len(part) > 1:  # ขีดเส้นใต้เฉพาะคำที่มีความยาวมากกว่า 1 ตัวอักษร
+                            formatted_parts.append(f"<u>{part}</u>")
                         else:
-                            # Calculate sub_end based on the average duration per syllable
-                            sub_end = sub_start + time_avg
-                        sub_amp = audio_analyzer._calculate_average_amplitude(
-                            sub_start, sub_end
-                        )
-                        min_amplitude, max_amplitude = (
-                            audio_analyzer._get_min_max_amplitudes(
-                                self.audio_file, start_time, end_time
-                            )
-                        )
-                        pitch_avg = audio_analyzer._get_pitch_avg(sub_start, sub_end)
-                        pitch_max = audio_analyzer._get_pitch_max(sub_start, sub_end)
-
-                        pitch_top10_avg = audio_analyzer._get_pitch_top10_avg(
-                            sub_start, sub_end
-                        )
-                        stress_value = self._get_stress_value(
-                            amp, sub_amp, word_avg_pitch, pitch_avg
-                        )
-
-                        # Print for debugging purposes
-                        # print(
-                        #     f"  {sub_word}, {sub_start}, {sub_end}, {sub_amp}, {stress_value}, {min_amplitude}, {max_amplitude}"
-                        # )
-                        # print(f"        pitch avg: {pitch_avg}")
-                        # print(f"        pitch max: {pitch_max}")
-                        # print(f"        pitch top10 avg: {pitch_top10_avg}")
-                        # Append to word_stress_list
-                        word_stress_list.append((sub_word, stress_value))
-                        # Update sub_start to the next time interval
-                        sub_start = sub_end
-
+                            formatted_parts.append(part)
+                    # รวมคำกลับด้วยช่องว่าง
+                    result.append(" ".join(formatted_parts))
                 else:
-                    # Fetch min_amplitude, max_amplitude from _get_min_max_amplitudes
-                    min_amplitude, max_amplitude = (
-                        audio_analyzer._get_min_max_amplitudes(
-                            self.audio_file, start_time, end_time
-                        )
-                    )
-                    pitch_avg = audio_analyzer._get_pitch_avg(start_time, end_time)
-                    pitch_max = audio_analyzer._get_pitch_max(start_time, end_time)
-                    pitch_top10_avg = audio_analyzer._get_pitch_top10_avg(
-                        start_time, end_time
-                    )
-                    stress_value = self._get_stress_value(
-                        sentence_amplitude, amp, pitch_avg_sentence, pitch_avg
-                    )
-                    word_stress_list.append((word, stress_value))
+                    result.append(word)
+                
+                current_pos = word_pos + len(word)
+            
+            # เพิ่มข้อความที่เหลือ
+            result.append(text[current_pos:])
+            
+            return "".join(result)
 
-                    # Print for debugging purposes
-                    # print(
-                    #     f"  {word}, {start_time}, {end_time}, {amp}, {stress_value}, {min_amplitude}, {max_amplitude}"
-                    # )
-            #         print(f"        pitch avg: {pitch_avg}")
-            #         print(f"        pitch max: {pitch_max}")
-            #         print(f"        pitch top10 avg: {pitch_top10_avg}")
+        except Exception as e:
+            print(f"Error in _apply_stress_formatting: {str(e)}")
+            return text
 
-            # print("")
-            stress_lists.append(word_stress_list)
-        return stress_lists
+    def generate_vtt(self, vtt_filename):
+        """Generate VTT file with stress formatting"""
+        try:
+            self.collect_data()
+            stress_lists = self._calculate_stress()
 
-    def _split_word_into_syllables(self, word, num_syllables):
-        vowels = "aeiouy"
-        syllables = []
-        current_syllable = ""
-        for letter in word:
-            if letter.lower() in vowels:
-                if current_syllable:
-                    syllables.append(current_syllable)
-                    current_syllable = ""
-            current_syllable += letter
-        if current_syllable:
-            syllables.append(current_syllable)
+            # Combine original segments with stress formatting
+            formatted_segments = []
+            for segment, stress_list in zip(self.text_sentences, stress_lists):
+                formatted_text = self._apply_stress_formatting(
+                    segment, 
+                    stress_list
+                )
+                if formatted_text:
+                    start_time = self.sentences[len(formatted_segments)][0]['start']
+                    end_time = self.sentences[len(formatted_segments)][-1]['end']
+                    formatted_segments.append((start_time, end_time, formatted_text))
 
-        if len(syllables) != num_syllables:
-            syllables = []
-            syllable_length = len(word) // num_syllables
-            remaining_chars = len(word) % num_syllables
-            start_index = 0
-            for i in range(num_syllables):
-                end_index = start_index + syllable_length
-                if i < remaining_chars:
-                    end_index += 1
-                syllables.append(word[start_index:end_index])
-                start_index = end_index
-        return syllables
+            # Write to VTT file
+            with open(vtt_filename, "w", encoding='utf-8') as f:
+                f.write("WEBVTT\n\n")
+                for i, (start, end, text) in enumerate(formatted_segments, 1):
+                    f.write(f"{i}\n")
+                    f.write(f"{format_time(start)} --> {format_time(end)}\n")
+                    f.write(f"{text}\n\n")
 
-"""
-vtt_file_name = "stress_closed_caption.vtt"
-audio_file = "Unit 6 I need to buy new clothes.mp3"
-json_file = "Unit 6 I need to buy new clothes.json"
+        except Exception as e:
+            print(f"Error in generate_vtt: {str(e)}")
 
-recognizer = SentenceRecognizer(audio_file, json_file)
-recognizer.generate_vtt(vtt_file_name)
-
-"""
+if __name__ == "__main__":
+    audio_file = "input_audio.wav"
+    json_file = "whisper_output.json"
+    vtt_file = "output.vtt"
+    
+    recognizer = SentenceRecognizer(audio_file, json_file)
+    recognizer.generate_vtt(vtt_file)

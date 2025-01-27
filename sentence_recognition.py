@@ -19,7 +19,7 @@ class SentenceRecognition:
             return
 
         # Run the recognition command
-        command = f'whisper "{file_path}" --model medium.en --word_timestamps True --highlight_words True'
+        command = f'whisper "{file_path}" --model large-v2 --word_timestamps True --highlight_words True'
         output = os.popen(command).read()
         print(output)
 
