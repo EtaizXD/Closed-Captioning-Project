@@ -241,16 +241,31 @@
             const selectedText = range.toString();
             if (!selectedText.trim()) return;
 
-            // แยกคำและเว้นวรรค
             const words = selectedText.split(/(\s+)/);
             const container = document.createElement('span');
 
+            // ฟังก์ชันตรวจสอบว่าเป็นตัวอักษรหรือไม่
+            function isLetter(char) {
+                return /[a-zA-Z]/.test(char);
+            }
+
             words.forEach(word => {
                 if (word.trim()) {
-                    const underline = document.createElement('u');
-                    underline.textContent = word;
-                    container.appendChild(underline);
+                    // แยกเป็นตัวอักษรและตรวจสอบแต่ละตัว
+                    const letters = word.split('');
+                    letters.forEach(letter => {
+                        if (isLetter(letter)) {
+                            // ใส่ tag u เฉพาะตัวอักษร
+                            const underline = document.createElement('u');
+                            underline.textContent = letter;
+                            container.appendChild(underline);
+                        } else {
+                            // เครื่องหมายวรรคตอนไม่ต้องใส่ tag u
+                            container.appendChild(document.createTextNode(letter));
+                        }
+                    });
                 } else {
+                    // เก็บช่องว่างไว้เหมือนเดิม
                     container.appendChild(document.createTextNode(word));
                 }
             });
@@ -258,7 +273,6 @@
             range.deleteContents();
             range.insertNode(container);
             
-            // Clear selection
             selection.removeAllRanges();
             updateHiddenTextarea();
         }

@@ -136,13 +136,16 @@ class SentenceRecognizer:
             return []
 
     def _apply_stress_formatting(self, text, stress_list):
-        """Apply stress formatting while preserving whitespace"""
+        """Apply stress formatting while preserving whitespace and punctuation"""
         try:
             if not text or not stress_list:
                 return text
 
             result = []
             current_pos = 0
+            
+            def is_letter(char):
+                return char.isalpha()
             
             for word_data in stress_list:
                 word = word_data['word']
@@ -158,17 +161,20 @@ class SentenceRecognizer:
                 # เพิ่มข้อความก่อนคำปัจจุบัน (รวมช่องว่าง)
                 result.append(text[current_pos:word_pos])
                 
-                # จัดการการขีดเส้นใต้โดยแยกพยางค์
+                # จัดการการขีดเส้นใต้โดยแยกตัวอักษร
                 if word_data['stress'] == 1:
                     # แยกคำตามช่องว่าง
                     parts = word.split()
                     formatted_parts = []
                     for part in parts:
-                        # ตรวจสอบว่าควรขีดเส้นใต้หรือไม่
-                        if len(part) > 1:  # ขีดเส้นใต้เฉพาะคำที่มีความยาวมากกว่า 1 ตัวอักษร
-                            formatted_parts.append(f"<u>{part}</u>")
-                        else:
-                            formatted_parts.append(part)
+                        # ขีดเส้นใต้ทีละตัวอักษร โดยตรวจสอบว่าเป็นตัวอักษรหรือไม่
+                        formatted_chars = []
+                        for char in part:
+                            if is_letter(char):
+                                formatted_chars.append(f"<u>{char}</u>")
+                            else:
+                                formatted_chars.append(char)
+                        formatted_parts.append(''.join(formatted_chars))
                     # รวมคำกลับด้วยช่องว่าง
                     result.append(" ".join(formatted_parts))
                 else:
