@@ -278,43 +278,97 @@ def save_vtt(audio_id):
 @login_required
 def download_vtt(audio_id):
     cursor = mysql.connection.cursor()
-    cursor.execute(
-        "SELECT TRIM(vtt_content) FROM vttfiles WHERE audio_id = %s", (audio_id,)
-    )
-    result = cursor.fetchone()
+    try:
+        # ดึงข้อมูล VTT content และชื่อไฟล์ VTT ที่อาจมีการเปลี่ยนแปลงแล้ว
+        cursor.execute(
+            "SELECT v.vtt_content, v.file_name, a.file_name as original_audio_filename FROM vttfiles v "
+            "INNER JOIN audiofiles a ON v.audio_id = a.audio_id "
+            "WHERE v.audio_id = %s AND a.user_id = %s", 
+            (audio_id, current_user.id)
+        )
+        result = cursor.fetchone()
 
-    if not result:
-        flash("VTT file not found.", "danger")
-        return redirect(url_for("your_files"))
+        if not result:
+            flash("VTT file not found.", "danger")
+            return redirect(url_for("your_files"))
 
-    vtt_content = result[0]
+        vtt_content, vtt_filename, original_audio_filename = result
+        
+        # ใช้ชื่อไฟล์ VTT ที่อยู่ในฐานข้อมูล (ซึ่งอาจมีการ rename ไปแล้ว)
+        # ถ้าไม่มีหรือเป็นชื่อเริ่มต้น ให้ใช้ชื่อเดียวกับไฟล์เสียงแทน
+        if not vtt_filename or vtt_filename == "stress_closed_caption.vtt":
+            base_filename = os.path.splitext(original_audio_filename)[0]
+            download_filename = f"{base_filename}.vtt"
+        else:
+            download_filename = vtt_filename
+        
+        # แก้ไข format ของ VTT content
+        if vtt_content:
+            lines = vtt_content.splitlines()
+            new_lines = []
+            webvtt_line = None
+            
+            # แยก WEBVTT ออกมาก่อน
+            for line in lines:
+                if 'WEBVTT' in line:
+                    webvtt_line = 'WEBVTT'
+                else:
+                    new_lines.append(line.rstrip())
+            
+            # สร้าง content ใหม่โดยเริ่มด้วย WEBVTT
+            final_content = ['WEBVTT']  # เริ่มด้วย WEBVTT
+            final_content.extend(new_lines)  # เพิ่มเนื้อหาที่เหลือ
+            
+            # รวมกลับเป็น string
+            vtt_content = '\n'.join(final_content)
+
+        response = make_response(vtt_content)
+        response.headers["Content-Disposition"] = f"attachment; filename={download_filename}"
+        response.headers["Content-Type"] = "text/vtt"
+        return response
     
-    # แก้ไข format ของ VTT content
-    if vtt_content:
-        lines = vtt_content.splitlines()
-        new_lines = []
-        webvtt_line = None
-        
-        # แยก WEBVTT ออกมาก่อน
-        for line in lines:
-            if 'WEBVTT' in line:
-                webvtt_line = 'WEBVTT'
-            else:
-                new_lines.append(line.rstrip())
-        
-        # สร้าง content ใหม่โดยเริ่มด้วย WEBVTT
-        final_content = ['WEBVTT']  # เริ่มด้วย WEBVTT
-        final_content.extend(new_lines)  # เพิ่มเนื้อหาที่เหลือ
-        
-        # รวมกลับเป็น string
-        vtt_content = '\n'.join(final_content)
+    except Exception as e:
+        flash(f"An error occurred: {str(e)}", "danger")
+        return redirect(url_for("your_files"))
+    
+    finally:
+        cursor.close()
 
-    response = make_response(vtt_content)
-    response.headers["Content-Disposition"] = (
-        f"attachment; filename=edited_vtt_file.vtt"
-    )
-    response.headers["Content-Type"] = "text/vtt"
-    return response
+
+@app.route("/rename_vtt/<int:audio_id>", methods=["POST"])
+@login_required
+def rename_vtt(audio_id):
+    new_filename = request.json.get("new_filename")
+    
+    # ตรวจสอบว่าชื่อไฟล์ใหม่ถูกต้อง
+    if not new_filename or not new_filename.strip():
+        return jsonify({"success": False, "message": "Filename cannot be empty"}), 400
+    
+    # เพิ่มนามสกุล .vtt ถ้าไม่มี
+    if not new_filename.lower().endswith('.vtt'):
+        new_filename += '.vtt'
+    
+    # ทำให้ชื่อไฟล์ปลอดภัย
+    new_filename = secure_filename(new_filename)
+    
+    cursor = mysql.connection.cursor()
+    try:
+        # อัปเดตชื่อไฟล์ในฐานข้อมูล
+        cursor.execute(
+            "UPDATE vttfiles SET file_name = %s WHERE audio_id = %s AND audio_id IN "
+            "(SELECT audio_id FROM audiofiles WHERE user_id = %s)",
+            (new_filename, audio_id, current_user.id)
+        )
+        mysql.connection.commit()
+        
+        return jsonify({"success": True, "message": "File renamed successfully", "new_filename": new_filename}), 200
+    
+    except Exception as e:
+        print(f"Error renaming VTT file: {e}")
+        return jsonify({"success": False, "message": f"Error: {str(e)}"}), 500
+    
+    finally:
+        cursor.close()
 
 
 @app.route('/about')
@@ -356,7 +410,50 @@ def delete_audio(audio_id):
         cursor.close()
 
 
+@app.route("/get_vtt_filename/<int:audio_id>", methods=["GET"])
+@login_required
+def get_vtt_filename(audio_id):
+    cursor = mysql.connection.cursor()
+    try:
+        # ดึงข้อมูลชื่อไฟล์ VTT
+        cursor.execute(
+            "SELECT v.file_name, a.file_name as audio_filename FROM vttfiles v "
+            "INNER JOIN audiofiles a ON v.audio_id = a.audio_id "
+            "WHERE v.audio_id = %s AND a.user_id = %s", 
+            (audio_id, current_user.id)
+        )
+        result = cursor.fetchone()
 
+        if not result:
+            return jsonify({"success": False, "message": "File not found"}), 404
+
+        vtt_filename, audio_filename = result
+        
+        # ถ้าไม่มีชื่อไฟล์ VTT หรือชื่อเป็น "stress_closed_caption.vtt" (ชื่อเริ่มต้น)
+        # ให้สร้างชื่อใหม่จากชื่อไฟล์เสียง
+        if not vtt_filename or vtt_filename == "stress_closed_caption.vtt":
+            base_filename = os.path.splitext(audio_filename)[0]
+            vtt_filename = f"{base_filename}.vtt"
+            
+            # อัปเดตชื่อในฐานข้อมูล
+            cursor.execute(
+                "UPDATE vttfiles SET file_name = %s WHERE audio_id = %s",
+                (vtt_filename, audio_id)
+            )
+            mysql.connection.commit()
+
+        return jsonify({
+            "success": True, 
+            "filename": vtt_filename,
+            "original_audio": audio_filename
+        }), 200
+    
+    except Exception as e:
+        print(f"Error fetching VTT filename: {e}")
+        return jsonify({"success": False, "message": str(e)}), 500
+    
+    finally:
+        cursor.close()
 
 
 def insert_audio_file_to_db(

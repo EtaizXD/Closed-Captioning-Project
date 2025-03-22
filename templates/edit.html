@@ -60,9 +60,8 @@
         }
 
         .toolbar {
-            margin: 20px 0;
-            display: flex;
-            gap: 15px;
+        margin-top: 0;
+        margin-bottom: 20px;
         }
 
         .toolbar button,
@@ -88,9 +87,10 @@
         }
 
         .action-buttons {
-            margin-top: 30px;
-            display: flex;
-            gap: 20px;
+        margin-top: 30px;
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap; /* ให้ปุ่มขึ้นบรรทัดใหม่ได้บนหน้าจอเล็ก */
         }
 
         .action-buttons button {
@@ -151,7 +151,140 @@
             margin-bottom: 20px;
         }
 
+        /* Subtitle display styles */
+        .subtitle-display {
+            margin-top: 20px;
+            padding: 15px;
+            min-height: 100px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: rgba(0, 0, 0, 0.05);
+            font-size: 22px;
+            line-height: 1.5;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
 
+        .subtitle-text {
+            max-width: 100%;
+            word-break: normal;
+            word-spacing: normal;
+        }
+
+        .subtitle-display u {
+            text-decoration: underline;
+            margin: 0;
+            padding: 0;
+        }
+
+        .no-subtitle {
+            color: #777;
+            font-style: italic;
+        }
+
+        /* Debug panel styles */
+        #debug-panel {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            display: none;
+        }
+
+        .filename-editor {
+        margin-bottom: 30px;  /* เพิ่มระยะห่างด้านล่าง */
+        padding: 15px;
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .filename-editor h3 {
+        margin-top: 0;
+        margin-bottom: 15px;
+        font-size: 18px;
+        color: #333;
+        }
+
+        .filename-input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .filename-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+
+        .rename-button {
+            padding: 10px 15px;
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .rename-button:hover {
+            background-color: #5a6268;
+        }
+
+        .rename-message {
+            margin-top: 10px;
+            font-size: 14px;
+            min-height: 20px;
+        }
+
+        .message-success {
+            color: #28a745;
+        }
+
+        .message-error {
+            color: #dc3545;
+        }
+
+        .upload-youtube-button {
+        background-color: #FF0000; /* สีแดงของ YouTube */
+        color: white;
+        padding: 12px 24px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        border: none;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .upload-youtube-button:hover {
+        background-color: #CC0000; /* สีแดงเข้มเมื่อ hover */
+    }
+    
+    /* เพิ่ม icon สำหรับ YouTube */
+    .upload-youtube-button::before {
+        content: "";
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z'/%3E%3C/svg%3E");
+        background-size: contain;
+        background-repeat: no-repeat;
+        margin-right: 8px;
+    }
+
+    @media (max-width: 768px) {
+        .action-buttons {
+            flex-direction: column;
+        }
+    }
     </style>
 </head>
 <body>
@@ -160,6 +293,16 @@
         <!-- Left Panel - VTT Editor -->
         <div class="left-panel">
             <h1>Edit Your Closed Caption File</h1>
+            <!-- เพิ่มส่วนแก้ไขชื่อไฟล์ ตรงนี้ -->
+            <div class="filename-editor">
+                <h3>File Name</h3>
+                <div class="filename-input-group">
+                    <input type="text" id="vtt-filename" class="filename-input" placeholder="Enter file name">
+                    <button onclick="renameVttFile()" class="rename-button">Rename</button>
+                </div>
+                <div id="rename-message" class="rename-message"></div>
+            </div>
+        
             <div class="toolbar">
                 <button onclick="togglePrimaryStress()">Primary Stress</button>
                 <button onclick="applyNonStress()">Non-Stress</button>
@@ -175,8 +318,10 @@
                 <button class="cancel-button" onclick="cancelEdit()">Cancel</button>
                 <button class="save-button" onclick="saveAndReturn()">Save & Return</button>
                 <button class="save-download-button" onclick="saveAndDownload()">Save & Download</button>
+                <button class="upload-youtube-button" id="upload-youtube-btn">Upload Transcript to Youtube</button>
             </div>
         </div>
+            
 
         <!-- Right Panel - YouTube Video -->
         <div class="right-panel">
@@ -186,11 +331,91 @@
                        placeholder="Enter YouTube URL or Video ID">
                 <button class="load-video-btn" onclick="loadYouTubeVideo()">Load Video</button>
                 <div id="youtube-player"></div>
+                
+                <!-- Subtitle display area -->
+                <h2>Current Subtitle</h2>
+                <div id="subtitle-display" class="subtitle-display">
+                    <div class="subtitle-text no-subtitle">No video playing</div>
+                </div>
+
+                <!-- Debug panel - hidden by default -->
+                <div id="debug-panel">
+                    <h3>Debug Info</h3>
+                    <div id="debug-info"></div>
+                </div>
             </div>
         </div>
     </div>
 
     <script>
+        // YouTube Player API variables
+        let player;
+        let subtitles = [];
+        let currentSubtitleIndex = -1;
+        let subtitleCheckInterval;
+        let isDebugMode = false; // Set to true to enable debug panel
+        const SYNC_REFRESH_RATE = 60; // milliseconds between subtitle checks
+        const SUBTITLE_TIME_BUFFER = 0.05; // 50ms buffer to improve sync
+
+        // When the page loads
+        window.addEventListener('load', function() {
+            // Load YouTube API
+            const tag = document.createElement('script');
+            tag.src = "https://www.youtube.com/iframe_api";
+            const firstScriptTag = document.getElementsByTagName('script')[0];
+            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+            
+            // Initialize editor content
+            const formattedContent = document.getElementById('formatted-content');
+            formattedContent.innerHTML = cleanHtml(formattedContent.innerHTML);
+            updateHiddenTextarea();
+            
+            // Initialize debug panel visibility
+            if (isDebugMode) {
+                document.getElementById('debug-panel').style.display = 'block';
+            }
+            
+            // Parse subtitles on page load
+            parseVTTContent();
+            
+            // เพิ่มโค้ดดึงชื่อไฟล์เริ่มต้น
+            fetch(`/get_vtt_filename/{{ audio_id }}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.filename) {
+                    document.getElementById('vtt-filename').value = data.filename;
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching filename:', error);
+            });
+        });
+
+        // Function to add debug info
+        function debugLog(message) {
+            if (!isDebugMode) return;
+            
+            const debugInfo = document.getElementById('debug-info');
+            const timestamp = new Date().toLocaleTimeString();
+            debugInfo.innerHTML += `<p>${timestamp}: ${message}</p>`;
+            
+            // Limit number of debug messages
+            if (debugInfo.children.length > 10) {
+                debugInfo.removeChild(debugInfo.firstChild);
+            }
+        }
+
+        // Format timestamp for debug display
+        function formatSecondsToTimestamp(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            const ms = Math.floor((seconds % 1) * 1000);
+            
+            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+        }
+
+        // Function to clean HTML content
         function cleanHtml(content) {
             let lines = content.split('\n');
             let cleanedLines = [];
@@ -244,12 +469,14 @@
             return formattedContent.join('\n');
         }
 
+        // Update hidden textarea with content from editable div
         function updateHiddenTextarea() {
             const editableDiv = document.getElementById("formatted-content");
             const cleanedContent = cleanHtml(editableDiv.innerHTML);
             document.getElementById("raw-content").value = cleanedContent;
         }
 
+        // Toggle primary stress for selected text
         function togglePrimaryStress() {
             const selection = window.getSelection();
             if (!selection.rangeCount) return;
@@ -287,8 +514,12 @@
             
             selection.removeAllRanges();
             updateHiddenTextarea();
+            
+            // After editing, update the subtitle data
+            parseVTTContent();
         }
 
+        // Apply non-stress formatting to selected text
         function applyNonStress() {
             const selection = window.getSelection();
             if (!selection.rangeCount) return;
@@ -303,14 +534,19 @@
 
             selection.removeAllRanges();
             updateHiddenTextarea();
+            
+            // After editing, update the subtitle data
+            parseVTTContent();
         }
 
+        // Cancel editing and return to files page
         function cancelEdit() {
             if (confirm('Are you sure you want to cancel? All changes will be lost.')) {
                 window.location.href = '/your_files';
             }
         }
 
+        // Save changes and return to files page
         function saveAndReturn() {
             updateHiddenTextarea();
             var rawContent = document.getElementById("raw-content").value;
@@ -336,6 +572,7 @@
             });
         }
 
+        // Save changes and download the file
         function saveAndDownload() {
             updateHiddenTextarea();
             var rawContent = document.getElementById("raw-content").value;
@@ -351,9 +588,10 @@
                 if (response.ok) {
                     alert("File saved successfully!");
                     window.location.href = `/download_vtt/{{ audio_id }}`;
-                    setTimeout(() => {
-                        window.location.href = '/your_files';
-                    }, 1000);
+                    // ไม่เปลี่ยนหน้าหลังจากดาวน์โหลด (ตัดบรรทัดนี้ออก)
+                    // setTimeout(() => {
+                    //     window.location.href = '/your_files';
+                    // }, 1000);
                 } else {
                     alert("Failed to save file. Please try again.");
                 }
@@ -364,55 +602,477 @@
             });
         }
 
-        function loadYouTubeVideo() {
-            const url = document.getElementById('youtube-url').value;
-            const videoId = extractVideoId(url);
+        // Parse VTT timestamp format to seconds - improved version
+        function parseTimestamp(timestamp) {
+            // Format: 00:00:00.000 or 00:00.000
+            timestamp = timestamp.trim();
             
-            if (videoId) {
-                const playerDiv = document.getElementById('youtube-player');
-                playerDiv.innerHTML = `
-                    <iframe
-                        width="100%"
-                        height="100%"
-                        src="https://www.youtube.com/embed/${videoId}"
-                        frameborder="0"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowfullscreen>
-                    </iframe>
-                `;
-            } else {
-                alert('Please enter a valid YouTube URL or video ID');
+            // Handle different formats with more robust regex
+            if (timestamp.includes(':')) {
+                // Try format 00:00:00.000
+                let match = timestamp.match(/(\d+):(\d+):(\d+)\.(\d+)/);
+                if (match) {
+                    const hours = parseInt(match[1]);
+                    const minutes = parseInt(match[2]);
+                    const seconds = parseInt(match[3]);
+                    // Make sure to handle milliseconds correctly (could be any length)
+                    const msStr = match[4].padEnd(3, '0').substring(0, 3);
+                    const milliseconds = parseInt(msStr);
+                    
+                    const totalSeconds = hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+                    debugLog(`Parsed ${timestamp} to ${totalSeconds} seconds`);
+                    return totalSeconds;
+                }
+                
+                // Try format 00:00.000
+                match = timestamp.match(/(\d+):(\d+)\.(\d+)/);
+                if (match) {
+                    const minutes = parseInt(match[1]);
+                    const seconds = parseInt(match[2]);
+                    // Make sure to handle milliseconds correctly
+                    const msStr = match[3].padEnd(3, '0').substring(0, 3);
+                    const milliseconds = parseInt(msStr);
+                    
+                    const totalSeconds = minutes * 60 + seconds + milliseconds / 1000;
+                    debugLog(`Parsed ${timestamp} to ${totalSeconds} seconds`);
+                    return totalSeconds;
+                }
+            }
+            
+            // If we couldn't parse properly, try some fallback patterns
+            const numberRegex = /(\d+)/g;
+            const matches = timestamp.match(numberRegex);
+            
+            if (matches && matches.length >= 2) {
+                // Just try to extract some numbers and make a best guess
+                const seconds = parseInt(matches[matches.length - 2] || 0);
+                const milliseconds = parseInt(matches[matches.length - 1] || 0);
+                
+                debugLog(`Fallback parsing for "${timestamp}": ${seconds}.${milliseconds} seconds`);
+                return seconds + milliseconds / 1000;
+            }
+            
+            // Last resort
+            debugLog(`Failed to parse timestamp: ${timestamp}`);
+            return 0;
+        }
+        
+        // Parse VTT content from the editor - improved version
+        function parseVTTContent() {
+            try {
+                const content = document.getElementById("raw-content").value;
+                if (!content) return [];
+                
+                // Split into lines
+                const lines = content.split('\n');
+                const parsedSubtitles = [];
+                
+                let i = 0;
+                let subtitle = null;
+                let cueNumber = 0;
+                
+                // Skip header lines until we find a timestamp line
+                while (i < lines.length) {
+                    const line = lines[i].trim();
+                    
+                    // Skip WEBVTT line and blank lines
+                    if (line === 'WEBVTT' || line === '') {
+                        i++;
+                        continue;
+                    }
+                    
+                    // Check if this is a timestamp line
+                    if (line.includes('-->')) {
+                        // Parse timestamp line
+                        const timestampParts = line.split('-->').map(part => part.trim());
+                        if (timestampParts.length === 2) {
+                            const startTime = parseTimestamp(timestampParts[0]);
+                            const endTime = parseTimestamp(timestampParts[1]);
+                            
+                            // Create new subtitle object
+                            subtitle = {
+                                cueNumber: ++cueNumber,
+                                startTime: startTime,
+                                endTime: endTime,
+                                text: '',
+                                originalTimestamp: line
+                            };
+                        }
+                    } 
+                    // Check if this is a cue number (only if we're not inside a subtitle)
+                    else if (!subtitle && /^\d+$/.test(line)) {
+                        // This is a cue number, just move to next line
+                        i++;
+                        continue;
+                    } 
+                    // If we have a subtitle object but no text yet
+                    else if (subtitle) {
+                        // Add this line to the subtitle text
+                        if (subtitle.text) {
+                            subtitle.text += ' ' + line;
+                        } else {
+                            subtitle.text = line;
+                        }
+                        
+                        // Check if next line is blank, a timestamp, or a cue number
+                        // If so, we've finished this subtitle
+                        const nextLine = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+                        if (nextLine === '' || nextLine.includes('-->') || /^\d+$/.test(nextLine) || i + 1 >= lines.length) {
+                            if (subtitle.text) {
+                                parsedSubtitles.push(subtitle);
+                                debugLog(`Added subtitle: ${subtitle.startTime}s to ${subtitle.endTime}s - "${subtitle.text}"`);
+                            }
+                            subtitle = null;
+                        }
+                    }
+                    
+                    i++;
+                }
+                
+                // Sort subtitles by start time
+                parsedSubtitles.sort((a, b) => a.startTime - b.startTime);
+                
+                // Update the global subtitles array
+                subtitles = parsedSubtitles;
+                
+                // Log the parsed subtitles if debugging is enabled
+                if (isDebugMode) {
+                    debugLog(`Parsed ${subtitles.length} subtitles`);
+                    subtitles.forEach((sub, index) => {
+                        debugLog(`Subtitle ${index+1}: ${formatSecondsToTimestamp(sub.startTime)} --> ${formatSecondsToTimestamp(sub.endTime)}`);
+                    });
+                }
+                
+                return parsedSubtitles;
+            } catch (error) {
+                console.error("Error parsing VTT content:", error);
+                debugLog(`Error parsing VTT: ${error.message}`);
+                return [];
             }
         }
 
+        // Display subtitle based on current video time - improved version
+        function displaySubtitle(currentTime) {
+            try {
+                const subtitleDisplay = document.getElementById('subtitle-display');
+                
+                // Add extra debug info if debug mode is on
+                if (isDebugMode) {
+                    // This helps troubleshoot timing issues
+                    const timeInfo = document.createElement('div');
+                    timeInfo.style.fontSize = '12px';
+                    timeInfo.style.color = '#666';
+                    timeInfo.textContent = `Current time: ${formatSecondsToTimestamp(currentTime)}`;
+                    subtitleDisplay.appendChild(timeInfo);
+                }
+                
+                // Check first if we're already on the correct subtitle based on our current index
+                // This optimization helps avoid searching through all subtitles every time
+                let subtitle = null;
+                
+                if (currentSubtitleIndex >= 0 && currentSubtitleIndex < subtitles.length) {
+                    const currentSub = subtitles[currentSubtitleIndex];
+                    if (currentTime >= currentSub.startTime && currentTime <= currentSub.endTime) {
+                        subtitle = currentSub;
+                    } else if (currentSubtitleIndex + 1 < subtitles.length) {
+                        // Also check the next subtitle - often we just need to advance by one
+                        const nextSub = subtitles[currentSubtitleIndex + 1];
+                        if (currentTime >= nextSub.startTime && currentTime <= nextSub.endTime) {
+                            subtitle = nextSub;
+                            currentSubtitleIndex++;
+                        }
+                    }
+                }
+                
+                // If we didn't find a match with the optimized approach, search through all subtitles
+                if (!subtitle) {
+                    // Add a small buffer (50ms) to help with timing issues
+                    // This can improve subtitle sync for some viewers
+                    const timeWithBuffer = currentTime + SUBTITLE_TIME_BUFFER;
+                    
+                    // Find the subtitle that covers the current time
+                    subtitle = subtitles.find((sub, index) => {
+                        const matches = timeWithBuffer >= sub.startTime && timeWithBuffer <= sub.endTime;
+                        if (matches) {
+                            currentSubtitleIndex = index;
+                            return true;
+                        }
+                        return false;
+                    });
+                }
+                
+                if (subtitle) {
+                    // Create a fresh div to prevent formatting issues
+                    const subtitleDiv = document.createElement('div');
+                    subtitleDiv.className = 'subtitle-text';
+                    
+                    // Set the text including HTML formatting from the VTT
+                    subtitleDiv.innerHTML = subtitle.text;
+                    
+                    // Display the subtitle
+                    subtitleDisplay.innerHTML = '';
+                    subtitleDisplay.appendChild(subtitleDiv);
+                    
+                    // If debug mode, show additional timing information
+                    if (isDebugMode) {
+                        const debugDiv = document.createElement('div');
+                        debugDiv.style.fontSize = '12px';
+                        debugDiv.style.marginTop = '5px';
+                        debugDiv.style.color = '#666';
+                        debugDiv.innerHTML = `Subtitle #${subtitle.cueNumber}: ${formatSecondsToTimestamp(subtitle.startTime)} → ${formatSecondsToTimestamp(subtitle.endTime)}<br>Current time: ${formatSecondsToTimestamp(currentTime)}`;
+                        subtitleDisplay.appendChild(debugDiv);
+                    }
+                    
+                    // Log state changes for debugging
+                    debugLog(`Showing subtitle ${currentSubtitleIndex+1}/${subtitles.length} at ${formatSecondsToTimestamp(currentTime)}`);
+                } else {
+                    // No subtitle at this time
+                    subtitleDisplay.innerHTML = '<div class="subtitle-text no-subtitle">No subtitle at this time</div>';
+                    
+                    // Log when we enter a "no subtitle" state
+                    if (currentSubtitleIndex !== -1) {
+                        currentSubtitleIndex = -1;
+                        debugLog(`No subtitle at time ${formatSecondsToTimestamp(currentTime)}`);
+                    }
+                }
+            } catch (error) {
+                console.error("Error displaying subtitle:", error);
+                debugLog(`Error displaying subtitle: ${error.message}`);
+                
+                // Recover from error by displaying a fallback message
+                document.getElementById('subtitle-display').innerHTML = 
+                    '<div class="subtitle-text no-subtitle">Subtitle display error</div>';
+            }
+        }
+
+        // YouTube callback when API is ready
+        function onYouTubeIframeAPIReady() {
+            debugLog("YouTube API Ready");
+        }
+
+        // Load YouTube video - improved version
+        function loadYouTubeVideo() {
+            try {
+                const url = document.getElementById('youtube-url').value;
+                const videoId = extractVideoId(url);
+                
+                if (!videoId) {
+                    alert('Please enter a valid YouTube URL or video ID');
+                    return;
+                }
+                
+                debugLog(`Loading video ID: ${videoId}`);
+                
+                // Get VTT content before initializing the player
+                // This ensures subtitles are ready when video starts
+                const subtitleData = parseVTTContent();
+                debugLog(`Loaded ${subtitleData.length} subtitles before initializing player`);
+                
+                // If there's an existing player, destroy it
+                if (player) {
+                    clearInterval(subtitleCheckInterval);
+                    player.destroy();
+                }
+                
+                // Reset subtitle tracking variables
+                currentSubtitleIndex = -1;
+                
+                // Create a new player with optimal settings for subtitle sync
+                player = new YT.Player('youtube-player', {
+                    height: '100%',
+                    width: '100%',
+                    videoId: videoId,
+                    playerVars: {
+                        'playsinline': 1,
+                        'controls': 1,
+                        'enablejsapi': 1,
+                        'origin': window.location.origin,
+                        'modestbranding': 1,
+                        'iv_load_policy': 3, // Hide video annotations
+                        'rel': 0 // Don't show related videos
+                    },
+                    events: {
+                        'onReady': onPlayerReady,
+                        'onStateChange': onPlayerStateChange,
+                        'onError': onPlayerError
+                    }
+                });
+                
+                // Initialize subtitle display
+                document.getElementById('subtitle-display').innerHTML = 
+                    '<div class="subtitle-text no-subtitle">Video loaded. Press play to see subtitles.</div>';
+                
+                // Add a tip message about timing
+                const tipDiv = document.createElement('div');
+                tipDiv.style.marginTop = '10px';
+                tipDiv.style.fontSize = '14px';
+                tipDiv.style.color = '#666';
+                tipDiv.textContent = 'Tip: You can edit subtitles in the left panel and they will sync with the video.';
+                document.getElementById('subtitle-display').appendChild(tipDiv);
+                
+                // Enable debug mode through URL parameter
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.has('debug')) {
+                    isDebugMode = true;
+                    document.getElementById('debug-panel').style.display = 'block';
+                    debugLog("Debug mode enabled via URL parameter");
+                }
+            } catch (error) {
+                console.error("Error loading video:", error);
+                debugLog(`Error loading video: ${error.message}`);
+                alert('Error loading video. Please try again.');
+            }
+        }
+
+        // YouTube player ready callback
+        function onPlayerReady(event) {
+            debugLog("Player ready");
+        }
+
+        // YouTube player state change callback - improved version
+        function onPlayerStateChange(event) {
+            try {
+                // When the video is playing (1) start checking for subtitles
+                if (event.data === YT.PlayerState.PLAYING) {
+                    debugLog("Video is playing");
+                    
+                    // Reset subtitle index to force a full search on play
+                    currentSubtitleIndex = -1;
+                    
+                    // Parse VTT content to ensure we have latest subtitles
+                    parseVTTContent();
+                    
+                    // Clear any existing interval
+                    if (subtitleCheckInterval) {
+                        clearInterval(subtitleCheckInterval);
+                    }
+                    
+                    // Immediately display current subtitle
+                    try {
+                        const currentTime = player.getCurrentTime();
+                        displaySubtitle(currentTime);
+                    } catch (e) {
+                        console.error("Error getting initial subtitle:", e);
+                    }
+                    
+                    // Check for subtitles more frequently (60ms) for better synchronization
+                    // This provides smoother transitions and more accurate timing
+                    subtitleCheckInterval = setInterval(() => {
+                        try {
+                            if (player && typeof player.getCurrentTime === 'function') {
+                                const currentTime = player.getCurrentTime();
+                                displaySubtitle(currentTime);
+                            }
+                        } catch (e) {
+                            console.error("Error in subtitle interval:", e);
+                            debugLog(`Interval error: ${e.message}`);
+                        }
+                    }, SYNC_REFRESH_RATE);
+                } else if (event.data === YT.PlayerState.PAUSED) {
+                    debugLog("Video is paused");
+                    // Keep the current subtitle visible but clear the interval
+                    clearInterval(subtitleCheckInterval);
+                    
+                    // Show one final update with the paused time
+                    try {
+                        const currentTime = player.getCurrentTime();
+                        displaySubtitle(currentTime);
+                    } catch (e) {
+                        console.error("Error updating subtitle on pause:", e);
+                    }
+                } else if (event.data === YT.PlayerState.ENDED) {
+                    debugLog("Video has ended");
+                    // Clear interval and reset subtitle display
+                    clearInterval(subtitleCheckInterval);
+                    document.getElementById('subtitle-display').innerHTML = 
+                        '<div class="subtitle-text no-subtitle">Video has ended</div>';
+                }
+            } catch (error) {
+                console.error("Error handling player state change:", error);
+                debugLog(`Error in state change: ${error.message}`);
+            }
+        }
+
+        // YouTube player error callback
+        function onPlayerError(event) {
+            debugLog(`Player error: ${event.data}`);
+            document.getElementById('subtitle-display').innerHTML = 
+                '<div class="subtitle-text no-subtitle">Error loading video</div>';
+        }
+
+        // Extract YouTube video ID from URL
         function extractVideoId(url) {
             const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
             const match = url.match(regex);
             
             if (match && match[1]) {
                 return match[1];
-            } else if (url.length === 11) {
-                return url;
+            } else if (url.length === 11 && /^[a-zA-Z0-9_-]{11}$/.test(url)) {
+                return url; // This is likely a video ID already
             }
             return null;
         }
 
-        window.addEventListener('load', function() {
-            const formattedContent = document.getElementById('formatted-content');
-            formattedContent.innerHTML = cleanHtml(formattedContent.innerHTML);
-            updateHiddenTextarea();
-        });
-
+        // Auto-save when navigating away
         window.addEventListener("beforeunload", function (e) {
             updateHiddenTextarea();
-            fetch(`/save_vtt/{{ audio_id }}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    content: document.getElementById("raw-content").value,
-                }),
-            });
+            
+            // Send a final save request
+            navigator.sendBeacon(
+                `/save_vtt/{{ audio_id }}`,
+                JSON.stringify({
+                    content: document.getElementById("raw-content").value
+                })
+            );
         });
+
+        // Listen for changes in the editable div
+        document.getElementById('formatted-content').addEventListener('input', function() {
+            updateHiddenTextarea();
+            parseVTTContent();  // Update subtitles data when editing
+        });
+
+        // เพิ่มฟังก์ชันสำหรับการเปลี่ยนชื่อไฟล์
+        function renameVttFile() {
+            const newFilename = document.getElementById('vtt-filename').value.trim();
+            const messageElement = document.getElementById('rename-message');
+            
+            if (!newFilename) {
+                messageElement.textContent = 'Please enter a valid filename';
+                messageElement.className = 'rename-message message-error';
+                return;
+            }
+            
+            // ส่งคำขอเปลี่ยนชื่อไปยังเซิร์ฟเวอร์
+            fetch(`/rename_vtt/{{ audio_id }}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ new_filename: newFilename }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    messageElement.textContent = data.message;
+                    messageElement.className = 'rename-message message-success';
+                    // อัปเดตค่าในช่องอินพุตด้วยชื่อไฟล์ใหม่ (กรณีที่เซิร์ฟเวอร์แก้ไขชื่อไฟล์)
+                    if (data.new_filename) {
+                        document.getElementById('vtt-filename').value = data.new_filename;
+                    }
+                } else {
+                    messageElement.textContent = data.message;
+                    messageElement.className = 'rename-message message-error';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                messageElement.textContent = 'An error occurred';
+                messageElement.className = 'rename-message message-error';
+            });
+        }
+
+
     </script>
 </body>
 </html>
