@@ -47,9 +47,6 @@ Development Period: October 8 - November 8, 2024
 ## Installation
 (To be added during development)
 
-## Usage
-(To be added during development)
-
 ## Documentation
 - User manual available
 - Video tutorials for general users
