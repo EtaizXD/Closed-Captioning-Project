@@ -11,9 +11,9 @@ pronouncing_dict = cmudict.dict()
 
 def format_time(seconds):
     """Helper function to format time for VTT files"""
-    milliseconds = int(seconds * 1000)
-    seconds = int(seconds)
-    minutes, seconds = divmod(seconds, 60)
+    whole_seconds = int(seconds)
+    milliseconds = int((seconds - whole_seconds) * 1000)
+    minutes, seconds = divmod(whole_seconds, 60)
     hours, minutes = divmod(minutes, 60)
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
 
