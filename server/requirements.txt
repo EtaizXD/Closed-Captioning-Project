@@ -1,0 +1,6 @@
+# Extra Python deps to install on top of the faster-whisper-gpu image.
+# faster-whisper, ctranslate2, torch and CUDA libs are already present
+# in the base image so we only add the FastAPI surface here.
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9

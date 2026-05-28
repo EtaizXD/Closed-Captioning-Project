@@ -1,0 +1,968 @@
+{% extends 'new/base.html' %}
+{% set active_page = 'files' %}
+
+{% block title %}Edit Captions · CA-Informed Closed Captioning Tool{% endblock %}
+{% block page_modifier %}page--wide{% endblock %}
+
+{% block head_extra %}
+<style>
+    /* Page-local helpers (rest of styling lives in new.css) */
+    #debug-panel {
+        margin-top: 16px;
+        padding: 12px;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Edit closed caption file</h1>
+        <p class="page-header__sub">Edit cues, mark stressed syllables, and preview captions on the player.</p>
+    </div>
+    <a class="btn btn--ghost" href="{{ url_for('new_your_files') }}">&larr; Back to files</a>
+</div>
+
+<div class="editor-layout">
+    <!-- Left: VTT Editor -->
+    <section class="card">
+        <div class="filename-editor">
+            <h3>File name</h3>
+            <div class="filename-input-group">
+                <input type="text" id="vtt-filename" class="form-control"
+                       placeholder="Enter file name"
+                       autocomplete="off"
+                       aria-describedby="filename-hint rename-message">
+            </div>
+            <p id="filename-hint" class="form-hint">
+                Saved automatically when you click away or hit "Save &amp; Return".
+            </p>
+            <div id="rename-message" class="rename-message" role="status" aria-live="polite"></div>
+        </div>
+
+        <div class="toolbar" role="toolbar" aria-label="Stress markup">
+            <button class="btn btn--sm" type="button"
+                    onclick="togglePrimaryStress()"
+                    title="Underline selection as primary stress (Ctrl+U)">
+                Primary Stress <span class="kbd-hint">Ctrl+U</span>
+            </button>
+            <button class="btn btn--sm btn--secondary" type="button"
+                    onclick="applyNonStress()"
+                    title="Strip stress markup from selection (Ctrl+Shift+U)">
+                Non-Stress <span class="kbd-hint">Ctrl+Shift+U</span>
+            </button>
+        </div>
+
+        <div id="formatted-content" class="editor-area" contenteditable="true">
+            {{ vtt_content | safe }}
+        </div>
+
+        <textarea id="raw-content" style="display: none">{{ vtt_content }}</textarea>
+
+        <div class="action-buttons">
+            <button class="btn btn--ghost" onclick="cancelEdit()">Cancel</button>
+            <button class="btn btn--success" onclick="saveAndReturn()">Save &amp; Return</button>
+            <button class="btn" onclick="saveAndDownload()">Save &amp; Download</button>
+            <button class="btn btn--muted" onclick="saveAndDownload()">Export VTT</button>
+        </div>
+    </section>
+
+    <!-- Right: Media + Preview -->
+    <section class="card">
+        <h2>Media player</h2>
+        {% if media_kind == 'video' %}
+            <div class="media-frame" id="media-frame">
+                <video id="media-player" controls playsinline>
+                    <source src="{{ url_for('get_audio', audio_id=audio_id) }}" type="video/mp4">
+                    Your browser does not support the video element.
+                </video>
+                <div id="subtitle-display" class="subtitle-display subtitle-overlay subtitle-empty">
+                    <div class="subtitle-text no-subtitle">No media playing</div>
+                </div>
+            </div>
+            <div class="subtitle-controls">
+                <label for="subtitle-font-size">Subtitle size</label>
+                <input type="range" id="subtitle-font-size" min="14" max="36" step="1" value="22">
+                <span id="subtitle-font-size-value" class="value">22px</span>
+
+                <div class="subtitle-controls__spacer"></div>
+
+                <button type="button" id="toggle-subtitles"
+                        class="media-btn media-btn--toggle"
+                        aria-pressed="true"
+                        title="Toggle subtitles (C)">
+                    <span class="media-btn__icon" aria-hidden="true">CC</span>
+                    <span class="media-btn__label">Subtitles</span>
+                </button>
+
+                <button type="button" id="toggle-fullscreen"
+                        class="media-btn"
+                        title="Toggle fullscreen (F)">
+                    <span class="media-btn__icon" aria-hidden="true">&#x26F6;</span>
+                    <span class="media-btn__label">Fullscreen</span>
+                </button>
+            </div>
+        {% else %}
+            <div class="media-frame" style="background: var(--surface-2); padding: 18px;">
+                <audio id="media-player" controls>
+                    <source src="{{ url_for('get_audio', audio_id=audio_id) }}" type="{{ media_type }}">
+                    Your browser does not support the audio element.
+                </audio>
+            </div>
+            <h3 style="margin-top: 18px;">Current subtitle</h3>
+            <div id="subtitle-display" class="subtitle-display subtitle-card">
+                <div class="subtitle-text no-subtitle">No media playing</div>
+            </div>
+        {% endif %}
+
+        <div id="debug-panel">
+            <h3>Debug Info</h3>
+            <div id="debug-info"></div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let mediaPlayer;
+    let subtitles = [];
+    let currentSubtitleIndex = -1;
+    let subtitleCheckInterval;
+    let isDebugMode = false;
+    const SYNC_REFRESH_RATE = 60;
+    const SUBTITLE_TIME_BUFFER = 0.05;
+
+    // Track the last-known-good filename so we can detect edits and only
+    // POST to /rename_vtt when the user actually changed it.
+    let originalFilename = '';
+    let activeCueElement = null;
+
+    window.addEventListener('load', function () {
+        // Build the structured editor view (timestamp lines wrapped in
+        // clickable, contenteditable=false spans) from the raw VTT text.
+        // Reading from #raw-content avoids the HTML5-parser issue where
+        // any pre-existing ``<c.color-xxxxxx>`` would have its ``</c>``
+        // dropped by the time we see it on .innerHTML.
+        const formattedContent = document.getElementById('formatted-content');
+        const rawArea = document.getElementById('raw-content');
+        const initialVtt = (rawArea && typeof rawArea.value === 'string')
+            ? rawArea.value
+            : (formattedContent.textContent || '');
+        formattedContent.innerHTML = renderVttToEditor(initialVtt);
+        updateHiddenTextarea();
+
+        initializeLocalMediaPlayer();
+        initializeSubtitleFontControls();
+        initializeMediaControls();
+        initializeStressShortcuts();
+        initializeFilenameAutosave();
+        initializeTimestampSeek();
+
+        if (isDebugMode) {
+            document.getElementById('debug-panel').style.display = 'block';
+        }
+
+        parseVTTContent();
+
+        fetch(`/get_vtt_filename/{{ audio_id }}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.filename) {
+                    const input = document.getElementById('vtt-filename');
+                    input.value = data.filename;
+                    originalFilename = data.filename;
+                }
+            })
+            .catch(error => console.error('Error fetching filename:', error));
+    });
+
+    function debugLog(message) {
+        if (!isDebugMode) return;
+        const debugInfo = document.getElementById('debug-info');
+        const timestamp = new Date().toLocaleTimeString();
+        debugInfo.innerHTML += `<p>${timestamp}: ${message}</p>`;
+        if (debugInfo.children.length > 10) debugInfo.removeChild(debugInfo.firstChild);
+    }
+
+    function initializeSubtitleFontControls() {
+        const subtitleDisplay = document.getElementById('subtitle-display');
+        const fontSizeInput = document.getElementById('subtitle-font-size');
+        const fontSizeValue = document.getElementById('subtitle-font-size-value');
+        if (!subtitleDisplay || !fontSizeInput || !fontSizeValue) return;
+
+        const storageKey = 'subtitleFontSize';
+        const minSize = Number(fontSizeInput.min);
+        const maxSize = Number(fontSizeInput.max);
+
+        function applyFontSize(size) {
+            const parsedSize = Number(size);
+            const fallbackSize = Number(fontSizeInput.value);
+            const safeSize = Math.min(maxSize, Math.max(minSize,
+                Number.isFinite(parsedSize) ? parsedSize : fallbackSize));
+            subtitleDisplay.style.setProperty('--subtitle-font-size', `${safeSize}px`);
+            fontSizeInput.value = safeSize;
+            fontSizeValue.textContent = `${safeSize}px`;
+            localStorage.setItem(storageKey, String(safeSize));
+        }
+
+        applyFontSize(localStorage.getItem(storageKey) || fontSizeInput.value);
+        fontSizeInput.addEventListener('input', () => applyFontSize(fontSizeInput.value));
+    }
+
+    function initializeMediaControls() {
+        const frame = document.getElementById('media-frame');
+        const subtitleDisplay = document.getElementById('subtitle-display');
+        const ccBtn = document.getElementById('toggle-subtitles');
+        const fsBtn = document.getElementById('toggle-fullscreen');
+        if (!frame || !subtitleDisplay || !ccBtn || !fsBtn) return;
+
+        // ----- CC toggle (persists across reloads) -----
+        const CC_KEY = 'subtitlesEnabled';
+        function applySubtitleVisibility(enabled) {
+            subtitleDisplay.classList.toggle('subtitle-hidden', !enabled);
+            ccBtn.setAttribute('aria-pressed', String(enabled));
+            ccBtn.classList.toggle('media-btn--off', !enabled);
+            localStorage.setItem(CC_KEY, enabled ? '1' : '0');
+        }
+        const savedCc = localStorage.getItem(CC_KEY);
+        applySubtitleVisibility(savedCc === null ? true : savedCc === '1');
+
+        ccBtn.addEventListener('click', () => {
+            const next = ccBtn.getAttribute('aria-pressed') !== 'true';
+            applySubtitleVisibility(next);
+        });
+
+        // ----- Fullscreen toggle (targets .media-frame so overlay follows) -----
+        function inFullscreen() {
+            return document.fullscreenElement === frame
+                || document.webkitFullscreenElement === frame;
+        }
+        function syncFullscreenButton() {
+            const active = inFullscreen();
+            fsBtn.classList.toggle('media-btn--active', active);
+            fsBtn.setAttribute('aria-pressed', String(active));
+            frame.classList.toggle('media-frame--fullscreen', active);
+        }
+        function requestFs() {
+            const fn = frame.requestFullscreen || frame.webkitRequestFullscreen;
+            if (fn) fn.call(frame).catch(err => console.warn('Fullscreen failed:', err));
+        }
+        function exitFs() {
+            const fn = document.exitFullscreen || document.webkitExitFullscreen;
+            if (fn) fn.call(document).catch(err => console.warn('Exit fullscreen failed:', err));
+        }
+        fsBtn.addEventListener('click', () => {
+            if (inFullscreen()) exitFs();
+            else requestFs();
+        });
+        document.addEventListener('fullscreenchange', syncFullscreenButton);
+        document.addEventListener('webkitfullscreenchange', syncFullscreenButton);
+        syncFullscreenButton();
+
+        // ----- Keyboard shortcuts (C and F) -----
+        document.addEventListener('keydown', (event) => {
+            // Don't hijack typing in the caption editor or any input field.
+            const target = event.target;
+            if (target && (target.isContentEditable
+                || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) {
+                return;
+            }
+            if (event.ctrlKey || event.metaKey || event.altKey) return;
+            if (event.key === 'c' || event.key === 'C') {
+                event.preventDefault();
+                ccBtn.click();
+            } else if (event.key === 'f' || event.key === 'F') {
+                event.preventDefault();
+                fsBtn.click();
+            }
+        });
+    }
+
+    function formatSecondsToTimestamp(seconds) {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = Math.floor(seconds % 60);
+        const ms = Math.floor((seconds % 1) * 1000);
+        return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}.${ms.toString().padStart(3,'0')}`;
+    }
+
+    function cleanHtml(content) {
+        let lines = content.split('\n');
+        let cleanedLines = [];
+        let hasWebVTT = false;
+
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i].replace(/&nbsp;/g, ' ').trim();
+            if (!line) continue;
+
+            if (line === 'WEBVTT') {
+                if (!hasWebVTT) {
+                    cleanedLines.push('WEBVTT');
+                    hasWebVTT = true;
+                }
+                continue;
+            }
+
+            line = line
+                .replace(/<u><\/u>/g, '')
+                .replace(/<u><\/u><u><\/u>/g, '')
+                .replace(/<(?!\/?(u|b)\b)[^>]+>/gi, '')
+                .replace(/--&gt;/g, '-->')
+                .trim();
+
+            if (line) cleanedLines.push(line);
+        }
+
+        let formatted = [];
+        if (!hasWebVTT) formatted.push('WEBVTT');
+        formatted.push('');
+
+        let i = 0;
+        while (i < cleanedLines.length) {
+            const line = cleanedLines[i];
+            if (/^\d+$/.test(line)) {
+                if (i > 0) formatted.push('');
+                formatted.push(line);
+                if (++i < cleanedLines.length) formatted.push(cleanedLines[i]);
+                if (++i < cleanedLines.length) formatted.push(cleanedLines[i]);
+            }
+            i++;
+        }
+        return formatted.join('\n');
+    }
+
+    function updateHiddenTextarea() {
+        const editableDiv = document.getElementById('formatted-content');
+        const cleanedContent = cleanHtml(editableDiv.innerHTML);
+        document.getElementById('raw-content').value = cleanedContent;
+    }
+
+    // ---- Selection helpers (keep caret put after toolbar / shortcut use) ----
+    //
+    // The previous implementation called ``selection.removeAllRanges()`` and
+    // never restored a caret, so every press of "Primary Stress" /
+    // "Non-Stress" yanked focus out of the editor and forced the user to
+    // mouse back in to keep typing. Both helpers below now:
+    //   1. Bail out if the selection isn't inside the editor (so toolbar
+    //      buttons can't damage random parts of the page).
+    //   2. Refuse to act on the read-only timestamp spans (which would
+    //      otherwise corrupt the cue boundaries).
+    //   3. Replace the selection with the requested DOM, then collapse a
+    //      fresh range to the END of the inserted content and re-focus
+    //      the editor. The caret lands right after the affected word so
+    //      the user can keep typing without skipping a beat.
+    function _editorSelectionRange() {
+        const editor = document.getElementById('formatted-content');
+        const selection = window.getSelection();
+        if (!editor || !selection || !selection.rangeCount) return null;
+        const range = selection.getRangeAt(0);
+        if (!editor.contains(range.commonAncestorContainer)) return null;
+        // Refuse to operate when any part of the selection sits inside a
+        // ``.vtt-timestamp`` span -- those are intentionally non-editable.
+        const ancestor = range.commonAncestorContainer.nodeType === 1
+            ? range.commonAncestorContainer
+            : range.commonAncestorContainer.parentElement;
+        if (ancestor && ancestor.closest && ancestor.closest('.vtt-timestamp')) {
+            return null;
+        }
+        return { editor, selection, range };
+    }
+
+    function _placeCaretAfter(node) {
+        const editor = document.getElementById('formatted-content');
+        const selection = window.getSelection();
+        if (!editor || !selection || !node) return;
+        const r = document.createRange();
+        r.setStartAfter(node);
+        r.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(r);
+        editor.focus({ preventScroll: true });
+    }
+
+    function togglePrimaryStress() {
+        const ctx = _editorSelectionRange();
+        if (!ctx) return;
+        const { range } = ctx;
+        const selectedText = range.toString();
+        if (!selectedText.trim()) return;
+
+        const fragment = document.createDocumentFragment();
+        const isLetter = (ch) => /[A-Za-z]/.test(ch);
+
+        // Wrap each contiguous run of letters in a single <u>; non-letters
+        // (spaces, punctuation, digits) stay as plain text so we don't
+        // explode every word into N micro-tags.
+        let buffer = '';
+        function flushLetters() {
+            if (!buffer) return;
+            const u = document.createElement('u');
+            u.textContent = buffer;
+            fragment.appendChild(u);
+            buffer = '';
+        }
+        for (const ch of selectedText) {
+            if (isLetter(ch)) {
+                buffer += ch;
+            } else {
+                flushLetters();
+                fragment.appendChild(document.createTextNode(ch));
+            }
+        }
+        flushLetters();
+
+        const lastChild = fragment.lastChild;
+        range.deleteContents();
+        range.insertNode(fragment);
+        _placeCaretAfter(lastChild);
+        updateHiddenTextarea();
+        parseVTTContent();
+    }
+
+    function applyNonStress() {
+        const ctx = _editorSelectionRange();
+        if (!ctx) return;
+        const { range } = ctx;
+        const selectedText = range.toString();
+        if (!selectedText.trim()) return;
+
+        const textNode = document.createTextNode(selectedText);
+        range.deleteContents();
+        range.insertNode(textNode);
+        _placeCaretAfter(textNode);
+        updateHiddenTextarea();
+        parseVTTContent();
+    }
+
+    // Ctrl+U   -> apply primary stress
+    // Ctrl+Shift+U -> strip stress (Non-Stress)
+    // Plus a Backspace guard that snaps the caret out of an emptied <u>
+    // wrapper so the next keystroke isn't silently underlined.
+    function initializeStressShortcuts() {
+        const editor = document.getElementById('formatted-content');
+        if (!editor) return;
+
+        editor.addEventListener('keydown', function (event) {
+            const key = (event.key || '').toLowerCase();
+            const mod = event.ctrlKey || event.metaKey;
+            if (mod && key === 'u') {
+                event.preventDefault();
+                if (event.shiftKey) {
+                    applyNonStress();
+                } else {
+                    togglePrimaryStress();
+                }
+                return;
+            }
+
+            if (event.key === 'Backspace') {
+                // If the caret sits inside an empty <u>, escape out before
+                // the browser deletes the wrapper itself (which on some
+                // browsers leaves the caret in a "ghost" underline state
+                // where every following keystroke gets re-underlined).
+                const sel = window.getSelection();
+                if (!sel || !sel.rangeCount || !sel.isCollapsed) return;
+                const node = sel.focusNode;
+                if (!node) return;
+                const u = (node.nodeType === 1 ? node : node.parentElement);
+                if (u && u.tagName === 'U' && (u.textContent || '') === '') {
+                    event.preventDefault();
+                    const after = u.nextSibling;
+                    u.parentNode.removeChild(u);
+                    if (after) _placeCaretAfter(after.previousSibling || after.parentNode);
+                    updateHiddenTextarea();
+                    parseVTTContent();
+                }
+            }
+        });
+
+        // Sweep empty <u></u> wrappers out on every input so they can't
+        // accumulate into ``<u></u><u></u>...`` chains that the cleanup
+        // pass on save would otherwise have to untangle.
+        editor.addEventListener('input', function () {
+            const empties = editor.querySelectorAll('u:empty');
+            if (!empties.length) return;
+            const sel = window.getSelection();
+            const savedRange = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+            empties.forEach((u) => u.parentNode.removeChild(u));
+            if (savedRange) {
+                try { sel.removeAllRanges(); sel.addRange(savedRange); } catch (e) { /* node removed */ }
+            }
+        });
+    }
+
+    // ---- Editor view rendering ----
+    //
+    // Wrap every "MM:SS.mmm --> MM:SS.mmm" line in a non-editable, clickable
+    // <span class="vtt-timestamp"> so we can:
+    //   * jump the player to that cue when the user clicks it, and
+    //   * highlight the cue currently being played as a visual anchor.
+    // The cleanHtml() pass on save strips these spans, so the on-disk
+    // VTT round-trips unchanged. Reading the source from #raw-content
+    // (instead of #formatted-content.innerHTML) sidesteps the HTML5 parser
+    // dropping ``</c>`` after ``<c.color-xxxxxx>`` open tags.
+    const TIMESTAMP_LINE_RE =
+        /^(\s*)((?:\d+:)?\d{1,2}:\d{2}\.\d{1,3})\s*-->\s*((?:\d+:)?\d{1,2}:\d{2}\.\d{1,3})\s*(.*)$/;
+
+    function _escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function renderVttToEditor(rawVtt) {
+        const lines = String(rawVtt || '').split('\n');
+        const out = [];
+        for (const line of lines) {
+            const m = line.match(TIMESTAMP_LINE_RE);
+            if (m) {
+                const startSec = parseTimestamp(m[2]);
+                const endSec = parseTimestamp(m[3]);
+                const idx = out.filter(l => l.indexOf('class="vtt-timestamp"') !== -1).length;
+                out.push(
+                    '<span class="vtt-timestamp" '
+                    + 'data-start="' + startSec + '" '
+                    + 'data-end="' + endSec + '" '
+                    + 'data-cue-index="' + idx + '" '
+                    + 'contenteditable="false" tabindex="0" role="button" '
+                    + 'title="Click to seek to ' + _escapeHtml(m[2]) + '">'
+                    + _escapeHtml(line)
+                    + '</span>'
+                );
+            } else {
+                // Pass through; <u>/<b> tags are preserved by cleanHtml on save.
+                out.push(line);
+            }
+        }
+        return out.join('\n');
+    }
+
+    // ---- Click-to-seek + active-cue highlight ----
+    function initializeTimestampSeek() {
+        const editor = document.getElementById('formatted-content');
+        if (!editor) return;
+
+        editor.addEventListener('click', function (event) {
+            const ts = event.target.closest('.vtt-timestamp');
+            if (!ts || !mediaPlayer) return;
+            event.preventDefault();
+            const start = parseFloat(ts.dataset.start || '');
+            if (!Number.isFinite(start)) return;
+            try {
+                mediaPlayer.currentTime = start;
+                if (mediaPlayer.paused) {
+                    const p = mediaPlayer.play();
+                    if (p && p.catch) p.catch(() => { /* user-gesture required */ });
+                }
+            } catch (e) { console.warn('Seek failed:', e); }
+        });
+
+        editor.addEventListener('keydown', function (event) {
+            // Allow keyboard activation of focused timestamp anchors.
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            const ts = event.target.closest && event.target.closest('.vtt-timestamp');
+            if (!ts || !mediaPlayer) return;
+            event.preventDefault();
+            const start = parseFloat(ts.dataset.start || '');
+            if (!Number.isFinite(start)) return;
+            mediaPlayer.currentTime = start;
+        });
+    }
+
+    function highlightActiveCueInEditor(currentTime) {
+        const editor = document.getElementById('formatted-content');
+        if (!editor) return;
+        const spans = editor.querySelectorAll('.vtt-timestamp');
+        let next = null;
+        spans.forEach(span => {
+            const s = parseFloat(span.dataset.start || '');
+            const e = parseFloat(span.dataset.end || '');
+            if (Number.isFinite(s) && Number.isFinite(e)
+                && currentTime >= s - SUBTITLE_TIME_BUFFER
+                && currentTime <= e + SUBTITLE_TIME_BUFFER) {
+                next = span;
+            }
+        });
+        if (next === activeCueElement) return;
+        if (activeCueElement) activeCueElement.classList.remove('active');
+        activeCueElement = next;
+        if (activeCueElement) {
+            activeCueElement.classList.add('active');
+            // Only auto-scroll when the active cue isn't already visible,
+            // so we don't fight the user while they scroll to edit
+            // somewhere else.
+            const editorRect = editor.getBoundingClientRect();
+            const cueRect = activeCueElement.getBoundingClientRect();
+            const visible = cueRect.top >= editorRect.top
+                && cueRect.bottom <= editorRect.bottom;
+            if (!visible) {
+                activeCueElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+    }
+
+    // ---- Filename autosave ----
+    //
+    // The standalone "Rename" button has been removed; the filename input
+    // now persists on blur (whenever the user clicks anywhere else),
+    // and is force-flushed before any Save & Return / Save & Download
+    // network call. This eliminates the silent-loss hazard where the
+    // user typed a new filename and saved without clicking Rename first.
+    function initializeFilenameAutosave() {
+        const input = document.getElementById('vtt-filename');
+        if (!input) return;
+
+        input.addEventListener('blur', function () {
+            persistFilenameIfChanged().catch(err => console.warn(err));
+        });
+        input.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                input.blur();
+            }
+        });
+    }
+
+    function persistFilenameIfChanged() {
+        const input = document.getElementById('vtt-filename');
+        const messageElement = document.getElementById('rename-message');
+        if (!input) return Promise.resolve({ skipped: true });
+        const newFilename = (input.value || '').trim();
+        if (!newFilename) {
+            if (messageElement) {
+                messageElement.textContent = 'Filename cannot be empty.';
+                messageElement.className = 'rename-message message-error';
+            }
+            input.value = originalFilename || '';
+            return Promise.resolve({ skipped: true });
+        }
+        if (newFilename === originalFilename) {
+            return Promise.resolve({ skipped: true });
+        }
+
+        return ccFetch(`/rename_vtt/{{ audio_id }}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_filename: newFilename })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (messageElement) {
+                messageElement.textContent = data.message || (data.success ? 'Filename saved.' : 'Could not save filename.');
+                messageElement.className = 'rename-message ' + (data.success ? 'message-success' : 'message-error');
+            }
+            if (data.success) {
+                originalFilename = data.new_filename || newFilename;
+                input.value = originalFilename;
+            }
+            return data;
+        })
+        .catch(error => {
+            console.error('Filename save failed:', error);
+            if (messageElement) {
+                messageElement.textContent = 'Network error while saving filename.';
+                messageElement.className = 'rename-message message-error';
+            }
+            throw error;
+        });
+    }
+
+    function cancelEdit() {
+        if (confirm('Are you sure you want to cancel? All changes will be lost.')) {
+            window.location.href = "{{ url_for('new_your_files') }}";
+        }
+    }
+
+    function saveAndReturn() {
+        updateHiddenTextarea();
+        const rawContent = document.getElementById('raw-content').value;
+        // Always flush a pending filename rename before persisting the body
+        // so we never lose the new filename the user just typed.
+        persistFilenameIfChanged()
+            .catch(() => null)
+            .then(() => ccFetch(`/save_vtt/{{ audio_id }}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: rawContent })
+            }))
+            .then(response => {
+                if (response.ok) {
+                    alert('Changes saved successfully!');
+                    window.location.href = "{{ url_for('new_your_files') }}";
+                } else {
+                    alert('Failed to save changes. Please try again.');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while saving.');
+            });
+    }
+
+    function saveAndDownload() {
+        updateHiddenTextarea();
+        const rawContent = document.getElementById('raw-content').value;
+        persistFilenameIfChanged()
+            .catch(() => null)
+            .then(() => ccFetch(`/save_vtt/{{ audio_id }}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: rawContent })
+            }))
+            .then(response => {
+                if (response.ok) {
+                    alert('File saved successfully!');
+                    window.location.href = `/download_vtt/{{ audio_id }}`;
+                } else {
+                    alert('Failed to save file. Please try again.');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred. Please try again.');
+            });
+    }
+
+    function parseTimestamp(timestamp) {
+        timestamp = timestamp.trim();
+        if (timestamp.includes(':')) {
+            let match = timestamp.match(/(\d+):(\d+):(\d+)\.(\d+)/);
+            if (match) {
+                const hours = parseInt(match[1]);
+                const minutes = parseInt(match[2]);
+                const seconds = parseInt(match[3]);
+                const msStr = match[4].padEnd(3, '0').substring(0, 3);
+                const milliseconds = parseInt(msStr);
+                return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+            }
+            match = timestamp.match(/(\d+):(\d+)\.(\d+)/);
+            if (match) {
+                const minutes = parseInt(match[1]);
+                const seconds = parseInt(match[2]);
+                const msStr = match[3].padEnd(3, '0').substring(0, 3);
+                const milliseconds = parseInt(msStr);
+                return minutes * 60 + seconds + milliseconds / 1000;
+            }
+        }
+        const matches = timestamp.match(/(\d+)/g);
+        if (matches && matches.length >= 2) {
+            const seconds = parseInt(matches[matches.length - 2] || 0);
+            const milliseconds = parseInt(matches[matches.length - 1] || 0);
+            return seconds + milliseconds / 1000;
+        }
+        return 0;
+    }
+
+    function parseVTTContent() {
+        try {
+            const content = document.getElementById('raw-content').value;
+            if (!content) return [];
+            const lines = content.split('\n');
+            const parsed = [];
+            let i = 0;
+            let subtitle = null;
+            let cueNumber = 0;
+
+            while (i < lines.length) {
+                const line = lines[i].trim();
+                if (line === 'WEBVTT' || line === '') { i++; continue; }
+                if (line.includes('-->')) {
+                    const [start, end] = line.split('-->').map(s => s.trim());
+                    subtitle = {
+                        cueNumber: ++cueNumber,
+                        startTime: parseTimestamp(start),
+                        endTime: parseTimestamp(end),
+                        text: '',
+                        originalTimestamp: line
+                    };
+                } else if (!subtitle && /^\d+$/.test(line)) {
+                    i++; continue;
+                } else if (subtitle) {
+                    subtitle.text = subtitle.text ? subtitle.text + ' ' + line : line;
+                    const next = (i + 1 < lines.length) ? lines[i + 1].trim() : '';
+                    if (!next || next.includes('-->') || /^\d+$/.test(next)) {
+                        if (subtitle.text) parsed.push(subtitle);
+                        subtitle = null;
+                    }
+                }
+                i++;
+            }
+
+            parsed.sort((a, b) => a.startTime - b.startTime);
+            subtitles = parsed;
+            return parsed;
+        } catch (error) {
+            console.error('Error parsing VTT content:', error);
+            return [];
+        }
+    }
+
+    function displaySubtitle(currentTime) {
+        try {
+            const subtitleDisplay = document.getElementById('subtitle-display');
+            const usesOverlay = subtitleDisplay.classList.contains('subtitle-overlay');
+
+            let subtitle = null;
+            if (currentSubtitleIndex >= 0 && currentSubtitleIndex < subtitles.length) {
+                const cur = subtitles[currentSubtitleIndex];
+                if (currentTime >= cur.startTime && currentTime <= cur.endTime) {
+                    subtitle = cur;
+                } else if (currentSubtitleIndex + 1 < subtitles.length) {
+                    const nxt = subtitles[currentSubtitleIndex + 1];
+                    if (currentTime >= nxt.startTime && currentTime <= nxt.endTime) {
+                        subtitle = nxt;
+                        currentSubtitleIndex++;
+                    }
+                }
+            }
+
+            if (!subtitle) {
+                const t = currentTime + SUBTITLE_TIME_BUFFER;
+                subtitle = subtitles.find((sub, index) => {
+                    const m = t >= sub.startTime && t <= sub.endTime;
+                    if (m) currentSubtitleIndex = index;
+                    return m;
+                });
+            }
+
+            if (subtitle) {
+                subtitleDisplay.classList.remove('subtitle-empty');
+                const div = document.createElement('div');
+                div.className = 'subtitle-text';
+                div.innerHTML = subtitle.text;
+                subtitleDisplay.innerHTML = '';
+                subtitleDisplay.appendChild(div);
+            } else {
+                if (usesOverlay) {
+                    subtitleDisplay.classList.add('subtitle-empty');
+                    subtitleDisplay.innerHTML = '';
+                } else {
+                    subtitleDisplay.innerHTML = '<div class="subtitle-text no-subtitle">No subtitle at this time</div>';
+                }
+                if (currentSubtitleIndex !== -1) currentSubtitleIndex = -1;
+            }
+        } catch (error) {
+            console.error('Error displaying subtitle:', error);
+            const subtitleDisplay = document.getElementById('subtitle-display');
+            if (subtitleDisplay.classList.contains('subtitle-overlay')) {
+                subtitleDisplay.classList.add('subtitle-empty');
+                subtitleDisplay.innerHTML = '';
+            } else {
+                subtitleDisplay.innerHTML = '<div class="subtitle-text no-subtitle">Subtitle display error</div>';
+            }
+        }
+    }
+
+    function initializeLocalMediaPlayer() {
+        mediaPlayer = document.getElementById('media-player');
+        if (!mediaPlayer) return;
+
+        parseVTTContent();
+        const subtitleDisplay = document.getElementById('subtitle-display');
+        if (subtitleDisplay.classList.contains('subtitle-overlay')) {
+            subtitleDisplay.classList.add('subtitle-empty');
+            subtitleDisplay.innerHTML = '';
+        } else {
+            subtitleDisplay.innerHTML =
+                '<div class="subtitle-text no-subtitle">Media loaded. Press play to see subtitles.</div>';
+        }
+
+        mediaPlayer.addEventListener('play', function () {
+            currentSubtitleIndex = -1;
+            parseVTTContent();
+            if (subtitleCheckInterval) clearInterval(subtitleCheckInterval);
+            const tNow = mediaPlayer.currentTime || 0;
+            displaySubtitle(tNow);
+            highlightActiveCueInEditor(tNow);
+            subtitleCheckInterval = setInterval(() => {
+                const t = mediaPlayer.currentTime || 0;
+                displaySubtitle(t);
+                highlightActiveCueInEditor(t);
+            }, SYNC_REFRESH_RATE);
+        });
+
+        mediaPlayer.addEventListener('timeupdate', () => {
+            const t = mediaPlayer.currentTime || 0;
+            displaySubtitle(t);
+            highlightActiveCueInEditor(t);
+        });
+
+        mediaPlayer.addEventListener('seeked', () => {
+            currentSubtitleIndex = -1;
+            const t = mediaPlayer.currentTime || 0;
+            displaySubtitle(t);
+            highlightActiveCueInEditor(t);
+        });
+
+        mediaPlayer.addEventListener('pause', () => {
+            if (subtitleCheckInterval) clearInterval(subtitleCheckInterval);
+            displaySubtitle(mediaPlayer.currentTime || 0);
+        });
+
+        mediaPlayer.addEventListener('ended', () => {
+            if (subtitleCheckInterval) clearInterval(subtitleCheckInterval);
+            const sd = document.getElementById('subtitle-display');
+            if (sd.classList.contains('subtitle-overlay')) {
+                sd.classList.add('subtitle-empty');
+                sd.innerHTML = '';
+            } else {
+                sd.innerHTML = '<div class="subtitle-text no-subtitle">Media has ended</div>';
+            }
+        });
+
+        mediaPlayer.addEventListener('error', () => {
+            const sd = document.getElementById('subtitle-display');
+            if (sd.classList.contains('subtitle-overlay')) {
+                sd.classList.add('subtitle-empty');
+                sd.innerHTML = '';
+            } else {
+                sd.innerHTML = '<div class="subtitle-text no-subtitle">Error loading media</div>';
+            }
+        });
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('debug')) {
+            isDebugMode = true;
+            document.getElementById('debug-panel').style.display = 'block';
+        }
+    }
+
+    window.addEventListener('beforeunload', function () {
+        updateHiddenTextarea();
+        // ``fetch(..., { keepalive: true })`` is the modern replacement for
+        // navigator.sendBeacon and lets us send the X-CSRFToken header that
+        // CSRFProtect now requires for every POST.
+        try {
+            ccFetch(`/save_vtt/{{ audio_id }}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: document.getElementById('raw-content').value }),
+                keepalive: true,
+            });
+        } catch (err) {
+            // Best-effort save: ignore failures during page unload.
+        }
+    });
+
+    document.getElementById('formatted-content').addEventListener('input', function () {
+        updateHiddenTextarea();
+        parseVTTContent();
+    });
+
+    // ``renameVttFile`` was removed in favor of ``persistFilenameIfChanged``,
+    // which the filename input fires on blur and which Save & Return / Save
+    // & Download await before persisting the body. Keep a thin shim so any
+    // cached HTML still calling onclick="renameVttFile()" doesn't blow up.
+    function renameVttFile() {
+        return persistFilenameIfChanged();
+    }
+</script>
+{% endblock %}

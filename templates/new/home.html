@@ -1,0 +1,24 @@
+{% extends 'new/base.html' %}
+{% set active_page = 'home' %}
+
+{% block title %}CA-Informed Closed Captioning Tool{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>CA-Informed Closed Captioning Tool</h1>
+    <p>
+        Upload a video or audio file to generate closed captions with
+        highlighted prosodic features.
+    </p>
+
+    <div class="hero__actions">
+        {% if current_user.is_authenticated %}
+            <a class="btn btn--lg" href="{{ url_for('new_upload') }}">Upload media</a>
+            <a class="btn btn--lg btn--ghost" href="{{ url_for('new_your_files') }}">My files</a>
+        {% else %}
+            <a class="btn btn--lg" href="{{ url_for('new_login') }}">Sign in to upload</a>
+            <a class="btn btn--lg btn--ghost" href="{{ url_for('new_about') }}">Learn more</a>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

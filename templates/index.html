@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CC Stress</title>
+    <title>CA-Informed Closed Captioning Tool</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
 </head>
 <body>
@@ -12,9 +12,9 @@
     {% include 'nav.html' %}
 
     <div>
-        <h1 class="header"><u>Closed</u> <u>Cap</u>tions <br> with <u>Stressed</u> <u>Syl</u>lable <u>High</u>lights</h1>
+        <h1 class="header">CA-Informed Closed Captioning Tool</h1>
         <p class="description">
-            An online audio transcription engine to generate <br> closed caption files with stressed syllables being highlighted.
+            Upload a video or audio file to generate closed captions <br> with highlighted prosodic features.
         </p>
         
         <!-- Display error message, if any -->
@@ -29,19 +29,19 @@
         <!-- File upload form (initially hidden) -->
         <form id="uploadForm" method="POST" enctype="multipart/form-data" action="{{ url_for('home') }}">
             {{ form.hidden_tag() }}
-            <input type="file" name="file" id="fileInput" style="display: none;"> <!-- Hidden input for file upload -->
+            <input type="file" name="file" id="fileInput" accept="video/*,audio/*" style="display: none;"> <!-- Hidden input for file upload -->
         </form>
 
         <!-- Upload button with authentication check -->
         {% if current_user.is_authenticated %}
             <p>Welcome, {{ current_user.username }}!</p>
             
-            <button id="selectFileButton">Upload audio file</button>
+            <button id="selectFileButton">Upload media file</button>
             {% else %}
-            <button id="loginButton">Sign In to upload audio file</button>
+            <button id="loginButton">Sign In to upload media file</button>
             {% endif %}
             
-            <button id="selectFileButton">Upload audio file</button>
+            <button id="selectFileButton">Upload media file</button>
         <!-- JavaScript handling for button actions -->
         <script>
             // Redirect to login if not authenticated

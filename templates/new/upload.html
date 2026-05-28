@@ -1,0 +1,300 @@
+{% extends 'new/base.html' %}
+{% set active_page = 'upload' %}
+
+{% block title %}Upload · CA-Informed Closed Captioning Tool{% endblock %}
+{% block page_modifier %}page--narrow{% endblock %}
+
+{% block head_extra %}
+<style>
+    .sensitivity-group {
+        display: block;
+        margin: 18px 0 0;
+        padding: 14px 18px;
+        background: #f5f8ff;
+        border: 1px solid #d3dcef;
+        border-radius: 10px;
+        font-size: 14px;
+        color: #2b3d5c;
+    }
+    .sensitivity-group__title {
+        display: block;
+        margin: 0 0 8px;
+        font-weight: 600;
+        color: #1a2540;
+    }
+    .sensitivity-group__option {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 6px 0;
+    }
+    .sensitivity-group__option input[type="radio"] {
+        margin-top: 3px;
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+    .sensitivity-group__option label {
+        cursor: pointer;
+        line-height: 1.35;
+    }
+    .sensitivity-hint {
+        display: block;
+        margin-top: 2px;
+        font-size: 12px;
+        color: #5b6b85;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card upload-card">
+    <h1>Upload media file</h1>
+    <p class="page-header__sub">
+        Drop a video or audio file to generate captions with stressed-syllable highlights.
+    </p>
+
+    <form id="uploadForm" method="POST" enctype="multipart/form-data"
+          action="{{ url_for('new_upload') }}">
+        {{ form.hidden_tag() }}
+        <input type="file" name="file" id="fileInput" accept="video/*,audio/*" hidden>
+
+        <fieldset class="sensitivity-group">
+            <legend class="sensitivity-group__title">Transcription sensitivity</legend>
+            {% set sensitivity_hints = {
+                'off': 'Fastest, fewest false positives. Best for clear audio.',
+                'sensitive': 'Catches quiet speech by relaxing silence and confidence thresholds. Slower.',
+                'ultra': 'Catches whispered or barely audible speech. Slowest and may hallucinate on background noise.'
+            } %}
+            {% for subfield in form.sensitivity %}
+            <div class="sensitivity-group__option">
+                {{ subfield() }}
+                <label for="{{ subfield.id }}">
+                    <strong>{{ subfield.label.text }}</strong>
+                    <span class="sensitivity-hint">{{ sensitivity_hints.get(subfield.data, '') }}</span>
+                </label>
+            </div>
+            {% endfor %}
+        </fieldset>
+    </form>
+
+    <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="Choose media file">
+        <svg class="dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 16V4"/>
+            <path d="m6 10 6-6 6 6"/>
+            <path d="M4 18v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+        </svg>
+        <h3 style="margin: 0 0 6px;">Click to choose a file</h3>
+        <p class="form-hint" style="margin: 0;">
+            Supports {{ allowed_extensions|map('upper')|join(', ') }}.
+            Up to {{ (max_upload_bytes // (1024 * 1024)) }} MB.
+        </p>
+        <div style="margin-top: 18px;">
+            <button type="button" id="selectFileButton" class="btn btn--lg">Select file</button>
+        </div>
+    </div>
+
+    <div id="progressBarContainer" class="progress">
+        <div id="progressBar" class="progress__bar"></div>
+    </div>
+    <div id="progressPercentage" class="progress-meta"></div>
+    <div id="uploadStatus" class="progress-meta"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const selectFileButton = document.getElementById("selectFileButton");
+    const fileInput = document.getElementById("fileInput");
+    const uploadForm = document.getElementById("uploadForm");
+    const dropzone = document.getElementById("dropzone");
+    const progressBarContainer = document.getElementById("progressBarContainer");
+    const progressBar = document.getElementById("progressBar");
+    const progressPercentage = document.getElementById("progressPercentage");
+    const uploadStatus = document.getElementById("uploadStatus");
+
+    // Server-issued upload limits. Validating on the client lets us reject
+    // oversize / wrong-type files immediately, before the user wastes
+    // bandwidth uploading a 2GB clip only to be told it was rejected.
+    const MAX_UPLOAD_BYTES = {{ max_upload_bytes | int }};
+    const ALLOWED_EXTENSIONS = new Set([
+        {% for ext in allowed_extensions %}"{{ ext }}"{{ "," if not loop.last }}{% endfor %}
+    ]);
+
+    function _formatBytes(bytes) {
+        if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+        const units = ["B", "KB", "MB", "GB"];
+        let i = 0;
+        let value = bytes;
+        while (value >= 1024 && i < units.length - 1) {
+            value /= 1024;
+            i++;
+        }
+        return `${value.toFixed(value < 10 ? 1 : 0)} ${units[i]}`;
+    }
+
+    function _fileExtension(name) {
+        const dot = (name || "").lastIndexOf(".");
+        return dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+    }
+
+    // Returns true if ``file`` is allowed; otherwise renders an error and
+    // resets the picker so the user can try again.
+    function validateClientFile(file) {
+        if (!file) return false;
+        const ext = _fileExtension(file.name);
+        if (!ALLOWED_EXTENSIONS.has(ext)) {
+            uploadStatus.textContent =
+                `"${file.name}" isn't a supported format. Allowed: ${[...ALLOWED_EXTENSIONS].join(", ").toUpperCase()}.`;
+            try { fileInput.value = ""; } catch (e) { /* IE */ }
+            return false;
+        }
+        if (file.size > MAX_UPLOAD_BYTES) {
+            uploadStatus.textContent =
+                `"${file.name}" is ${_formatBytes(file.size)}, which exceeds the ${_formatBytes(MAX_UPLOAD_BYTES)} upload limit.`;
+            try { fileInput.value = ""; } catch (e) { /* IE */ }
+            return false;
+        }
+        return true;
+    }
+
+    function setProgress(percent, message) {
+        progressBarContainer.style.display = "block";
+        const normalizedPercent = Math.max(0, Math.min(100, Math.round(percent)));
+        progressBar.style.width = normalizedPercent + "%";
+        progressPercentage.textContent = `${message} ${normalizedPercent}%`;
+    }
+
+    function pollJobStatus(jobId) {
+        const interval = setInterval(function () {
+            fetch(`/job_status/${jobId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error && data.status !== "failed") {
+                        clearInterval(interval);
+                        uploadStatus.textContent = data.error;
+                        return;
+                    }
+
+                    setProgress(data.progress || 0, data.message || "Processing...");
+                    uploadStatus.textContent = data.message || "";
+
+                    if (data.status === "ready") {
+                        clearInterval(interval);
+                        // Redirect to the new themed files page
+                        window.location.href = "{{ url_for('new_your_files') }}";
+                    }
+
+                    if (data.status === "failed") {
+                        clearInterval(interval);
+                        uploadStatus.textContent = data.error || "Processing failed.";
+                    }
+                })
+                .catch(error => {
+                    clearInterval(interval);
+                    console.error("Status error:", error);
+                    uploadStatus.textContent = "Unable to check processing status.";
+                });
+        }, 1500);
+    }
+
+    function startUpload() {
+        if (!fileInput.files.length) return;
+
+        // Final guard before we open the connection. The same check ran on
+        // ``change`` / ``drop``, but this catches any path that bypassed
+        // those handlers (e.g. programmatic FormData injection).
+        if (!validateClientFile(fileInput.files[0])) return;
+
+        selectFileButton.disabled = true;
+        uploadStatus.textContent = "Starting upload...";
+        setProgress(0, "Uploading...");
+
+        const formData = new FormData(uploadForm);
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.addEventListener("progress", function (event) {
+            if (event.lengthComputable) {
+                const percent = (event.loaded / event.total) * 100;
+                setProgress(percent, "Uploading...");
+            }
+        });
+
+        xhr.addEventListener("load", function () {
+            selectFileButton.disabled = false;
+
+            let data = {};
+            try {
+                data = JSON.parse(xhr.responseText);
+            } catch (error) {
+                uploadStatus.textContent = "Upload completed, but the server returned an invalid response.";
+                return;
+            }
+
+            if (xhr.status >= 200 && xhr.status < 300 && data.job_id) {
+                setProgress(5, "Processing...");
+                uploadStatus.textContent = "Upload complete. Processing captions...";
+                pollJobStatus(data.job_id);
+            } else {
+                uploadStatus.textContent = data.error || "Upload failed.";
+            }
+        });
+
+        xhr.addEventListener("error", function () {
+            selectFileButton.disabled = false;
+            uploadStatus.textContent = "Upload failed due to a network error.";
+        });
+
+        xhr.open("POST", uploadForm.action);
+        xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+        xhr.send(formData);
+    }
+
+    selectFileButton.addEventListener("click", function (event) {
+        event.stopPropagation();
+        fileInput.click();
+    });
+
+    dropzone.addEventListener("click", function () {
+        fileInput.click();
+    });
+
+    dropzone.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            fileInput.click();
+        }
+    });
+
+    ["dragenter", "dragover"].forEach(evt => {
+        dropzone.addEventListener(evt, function (e) {
+            e.preventDefault();
+            dropzone.classList.add("is-dragover");
+        });
+    });
+
+    ["dragleave", "drop"].forEach(evt => {
+        dropzone.addEventListener(evt, function (e) {
+            e.preventDefault();
+            dropzone.classList.remove("is-dragover");
+        });
+    });
+
+    dropzone.addEventListener("drop", function (event) {
+        const files = event.dataTransfer && event.dataTransfer.files;
+        if (files && files.length) {
+            if (!validateClientFile(files[0])) return;
+            fileInput.files = files;
+            startUpload();
+        }
+    });
+
+    fileInput.addEventListener("change", function () {
+        if (fileInput.files && fileInput.files.length) {
+            if (!validateClientFile(fileInput.files[0])) return;
+            startUpload();
+        }
+    });
+</script>
+{% endblock %}

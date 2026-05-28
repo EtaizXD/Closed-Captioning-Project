@@ -4,8 +4,24 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Edit VTT File</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}" />
+    <title>Edit VTT File · CA-Informed Closed Captioning Tool</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    <script>
+        // Shared CSRF helper. Reads the token from the meta tag above and
+        // attaches it as ``X-CSRFToken`` for every state-changing request.
+        window.ccCsrfToken = (function () {
+            var tag = document.querySelector('meta[name="csrf-token"]');
+            return tag ? tag.getAttribute('content') : '';
+        })();
+        window.ccFetch = function (input, init) {
+            init = init || {};
+            var headers = new Headers(init.headers || {});
+            if (window.ccCsrfToken) headers.set('X-CSRFToken', window.ccCsrfToken);
+            init.headers = headers;
+            return fetch(input, init);
+        };
+    </script>
     <style>
         .container {
             display: flex;
@@ -60,8 +76,37 @@
         }
 
         .toolbar {
-        margin-top: 0;
-        margin-bottom: 20px;
+            margin-top: 0;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .toolbar-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* Make the colors row visually distinct from the stress row so users
+           don't confuse "Apply / Clear COLOR" with the stress-mark buttons.
+           Subtle card around it + a leading label. */
+        .toolbar-row--colors {
+            padding: 8px 12px;
+            background-color: #f4f7fb;
+            border: 1px solid #d6e0ee;
+            border-radius: 12px;
+        }
+
+        .toolbar-row-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #2c3e50;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+            margin-right: 4px;
         }
 
         .toolbar button,
@@ -84,6 +129,90 @@
             background-color: #cccccc;
             cursor: not-allowed;
             opacity: 0.6;
+        }
+
+        /* "Clear Color" is destructive-ish; tint it differently so it's
+           distinguishable from "Apply Color" at a glance. */
+        .toolbar .btn-clear-color {
+            background-color: #6c757d;
+        }
+        .toolbar .btn-clear-color:hover:not(:disabled) {
+            background-color: #565e64;
+        }
+
+        .toolbar-divider {
+            display: inline-block;
+            width: 1px;
+            height: 28px;
+            background-color: #ccc;
+            margin: 0 6px;
+        }
+
+        .color-picker-label {
+            font-size: 14px;
+            color: #444;
+            margin-left: 4px;
+        }
+
+        .speaker-color-input {
+            width: 38px;
+            height: 38px;
+            padding: 0;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            background: none;
+            cursor: pointer;
+            vertical-align: middle;
+        }
+
+        /* ---- Recent colors strip ---------------------------------------- */
+        .recent-colors {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            background-color: #ffffff;
+            border: 1px solid #d6e0ee;
+            border-radius: 999px;
+        }
+
+        .recent-color-swatch {
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 0 1px #b9c6d6;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .recent-color-swatch:hover:not(:disabled) {
+            transform: scale(1.12);
+            box-shadow: 0 0 0 2px #1e88e5;
+        }
+        .recent-color-swatch:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px #1e88e5;
+        }
+        .recent-color-swatch.is-empty {
+            background: repeating-linear-gradient(
+                45deg,
+                #f0f3f8 0 4px,
+                #dfe6ef 4px 8px
+            );
+            cursor: not-allowed;
+            box-shadow: 0 0 0 1px #c8d2df;
+        }
+        .recent-color-swatch.is-empty:hover {
+            transform: none;
+            box-shadow: 0 0 0 1px #c8d2df;
+        }
+
+        /* ``<c>`` is an unknown element; force inline display so it sits
+           beside surrounding text in both the editor and the overlay. */
+        .editable-div c,
+        .subtitle-display c {
+            display: inline;
         }
 
         .action-buttons {
@@ -115,6 +244,16 @@
             margin-top: 20px;
         }
 
+        .media-frame {
+            position: relative;
+            width: 100%;
+            margin-top: 20px;
+            overflow: hidden;
+            border-radius: 8px;
+            background: #000;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
         .video-input {
             width: 100%;
             padding: 10px;
@@ -137,13 +276,25 @@
             background-color: #0056b3;
         }
 
-        #youtube-player {
+        #media-player {
             width: 100%;
-            aspect-ratio: 16/9;
             margin-top: 20px;
             border: none;
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        video#media-player {
+            display: block;
+            aspect-ratio: 16/9;
+            margin-top: 0;
+            background: #000;
+            object-fit: contain;
+            box-shadow: none;
+        }
+
+        audio#media-player {
+            height: 44px;
         }
 
         h1, h2 {
@@ -177,6 +328,71 @@
             text-decoration: underline;
             margin: 0;
             padding: 0;
+        }
+
+        .subtitle-overlay {
+            position: absolute;
+            left: 50%;
+            bottom: clamp(48px, 10%, 76px);
+            transform: translateX(-50%);
+            width: 86%;
+            max-width: 86%;
+            min-height: 0;
+            margin: 0;
+            padding: 0;
+            border: none;
+            border-radius: 0;
+            background: transparent;
+            color: #fff;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .subtitle-overlay .subtitle-text {
+            display: inline;
+            padding: 4px 10px;
+            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.78);
+            color: #fff;
+            font-size: var(--subtitle-font-size, clamp(16px, 1.9vw, 24px));
+            font-weight: 700;
+            line-height: 1.35;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+            -webkit-box-decoration-break: clone;
+            box-decoration-break: clone;
+        }
+
+        .subtitle-overlay.subtitle-empty {
+            opacity: 0;
+        }
+
+        .subtitle-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 12px;
+            padding: 12px 14px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: #f8f9fa;
+        }
+
+        .subtitle-controls label {
+            font-weight: 600;
+            color: #333;
+            white-space: nowrap;
+        }
+
+        .subtitle-controls input[type="range"] {
+            flex: 1;
+            min-width: 140px;
+        }
+
+        #subtitle-font-size-value {
+            min-width: 44px;
+            text-align: right;
+            font-weight: 600;
+            color: #555;
         }
 
         .no-subtitle {
@@ -250,8 +466,8 @@
             color: #dc3545;
         }
 
-        .upload-youtube-button {
-        background-color: #FF0000; /* สีแดงของ YouTube */
+        .export-caption-button {
+        background-color: #6c757d;
         color: white;
         padding: 12px 24px;
         border-radius: 5px;
@@ -264,12 +480,11 @@
         justify-content: center;
     }
     
-    .upload-youtube-button:hover {
-        background-color: #CC0000; /* สีแดงเข้มเมื่อ hover */
+    .export-caption-button:hover {
+        background-color: #5a6268;
     }
     
-    /* เพิ่ม icon สำหรับ YouTube */
-    .upload-youtube-button::before {
+    .export-caption-button::before {
         content: "";
         display: inline-block;
         width: 20px;
@@ -304,8 +519,65 @@
             </div>
         
             <div class="toolbar">
-                <button onclick="togglePrimaryStress()">Primary Stress</button>
-                <button onclick="applyNonStress()">Non-Stress</button>
+                <div class="toolbar-row toolbar-row--stress" role="group"
+                     aria-label="Stress and pitch tools">
+                    <button onclick="applyPrimaryAccent()"
+                            title="Primary accent: heavier stress (underline + bold) per letter">
+                        <u><b>A</b></u>+
+                    </button>
+                    <button onclick="removePrimaryAccent()"
+                            title="Remove primary accent from the selected text">
+                        <u><b>A</b></u>-
+                    </button>
+                    <button onclick="applySecondaryAccent()"
+                            title="Secondary accent: lighter stress (underline) per letter">
+                        <u>A</u>+
+                    </button>
+                    <button onclick="removeSecondaryAccent()"
+                            title="Remove secondary accent from the selected text">
+                        <u>A</u>-
+                    </button>
+                    <button onclick="applyHighPitch()"
+                            title="Mark a pitch rise on each selected word">
+                        &#8593; High Pitch
+                    </button>
+                    <button onclick="applyLowPitch()"
+                            title="Mark a pitch fall on each selected word">
+                        &#8595; Low Pitch
+                    </button>
+                    <button onclick="applyNonStress()"
+                            title="Remove all stress / accent / pitch marks from the selected text">
+                        Non-Stress
+                    </button>
+                </div>
+
+                <div class="toolbar-row toolbar-row--colors" role="group"
+                     aria-label="Speaker colors">
+                    <span class="toolbar-row-label">Speaker color</span>
+
+                    <div class="recent-colors" id="recent-colors"
+                         role="group" aria-label="Recently used colors"
+                         title="Click a recent color to apply it"></div>
+
+                    <span class="toolbar-divider" aria-hidden="true"></span>
+
+                    <label class="color-picker-label" for="speaker-color">
+                        Custom
+                    </label>
+                    <input type="color"
+                           id="speaker-color"
+                           class="speaker-color-input"
+                           value="#1e88e5"
+                           title="Pick a custom color">
+                    <button onclick="applySpeakerColor()"
+                            title="Color the selected text with the custom color">
+                        Apply Color
+                    </button>
+                    <button class="btn-clear-color" onclick="clearSpeakerColor()"
+                            title="Remove any speaker color from the selected text">
+                        Clear Color
+                    </button>
+                </div>
             </div>
 
             <div id="formatted-content" class="editable-div" contenteditable="true">
@@ -318,25 +590,62 @@
                 <button class="cancel-button" onclick="cancelEdit()">Cancel</button>
                 <button class="save-button" onclick="saveAndReturn()">Save & Return</button>
                 <button class="save-download-button" onclick="saveAndDownload()">Save & Download</button>
-                <button class="upload-youtube-button" id="upload-youtube-btn">Upload Transcript to Youtube</button>
+                <button class="export-caption-button" onclick="saveAndDownload()">Export VTT</button>
             </div>
         </div>
             
 
-        <!-- Right Panel - YouTube Video -->
+        <!-- Right Panel - Local Media -->
         <div class="right-panel">
-            <h2>YouTube Video Player</h2>
+            <h2>Media Player</h2>
             <div class="video-container">
-                <input type="text" class="video-input" id="youtube-url" 
-                       placeholder="Enter YouTube URL or Video ID">
-                <button class="load-video-btn" onclick="loadYouTubeVideo()">Load Video</button>
-                <div id="youtube-player"></div>
-                
-                <!-- Subtitle display area -->
-                <h2>Current Subtitle</h2>
-                <div id="subtitle-display" class="subtitle-display">
-                    <div class="subtitle-text no-subtitle">No video playing</div>
-                </div>
+                {% if media_kind == 'video' %}
+                    <div class="media-frame">
+                        <video id="media-player"
+                               controls
+                               playsinline
+                               controlslist="nofullscreen noremoteplayback"
+                               disablepictureinpicture>
+                            <source src="{{ url_for('get_audio', audio_id=audio_id) }}" type="video/mp4">
+                            Your browser does not support the video element.
+                        </video>
+                        <!-- Subtitle display area -->
+                        <div id="subtitle-display" class="subtitle-display subtitle-overlay subtitle-empty">
+                            <div class="subtitle-text no-subtitle">No media playing</div>
+                        </div>
+                    </div>
+                    <div class="subtitle-controls">
+                        <label for="subtitle-font-size">Subtitle size</label>
+                        <input type="range" id="subtitle-font-size" min="14" max="36" step="1" value="22">
+                        <span id="subtitle-font-size-value">22px</span>
+                        <span class="subtitle-controls__spacer"></span>
+                        <button type="button"
+                                id="toggle-subtitles"
+                                class="media-btn media-btn--toggle"
+                                aria-pressed="true"
+                                title="Toggle subtitles (C)">
+                            <span class="media-btn__icon">CC</span>
+                            <span class="media-btn__label">On</span>
+                        </button>
+                        <button type="button"
+                                id="toggle-fullscreen"
+                                class="media-btn"
+                                title="Fullscreen (F)">
+                            <span class="media-btn__icon" aria-hidden="true">&#x26F6;</span>
+                            <span class="media-btn__label">Fullscreen</span>
+                        </button>
+                    </div>
+                {% else %}
+                    <audio id="media-player" controls>
+                        <source src="{{ url_for('get_audio', audio_id=audio_id) }}" type="{{ media_type }}">
+                        Your browser does not support the audio element.
+                    </audio>
+                    <!-- Subtitle display area -->
+                    <h2>Current Subtitle</h2>
+                    <div id="subtitle-display" class="subtitle-display">
+                        <div class="subtitle-text no-subtitle">No media playing</div>
+                    </div>
+                {% endif %}
 
                 <!-- Debug panel - hidden by default -->
                 <div id="debug-panel">
@@ -348,8 +657,7 @@
     </div>
 
     <script>
-        // YouTube Player API variables
-        let player;
+        let mediaPlayer;
         let subtitles = [];
         let currentSubtitleIndex = -1;
         let subtitleCheckInterval;
@@ -359,16 +667,32 @@
 
         // When the page loads
         window.addEventListener('load', function() {
-            // Load YouTube API
-            const tag = document.createElement('script');
-            tag.src = "https://www.youtube.com/iframe_api";
-            const firstScriptTag = document.getElementsByTagName('script')[0];
-            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-            
-            // Initialize editor content
+            // Initialize editor content. The server hands us content in
+            // VTT class form (``<c.color-FF0000>...</c>``). We CANNOT rely
+            // on the browser's HTML parser to read this directly, because
+            // when ``<c.color-FF0000>`` is parsed as HTML the dot/dash get
+            // appended to the tag name (``c.color-ff0000``), and the
+            // matching ``</c>`` no longer closes it -- which causes the
+            // color to bleed onto everything that follows in the editor.
+            //
+            // Read the unparsed VTT text from the hidden ``#raw-content``
+            // textarea (Jinja already HTML-escaped it, so ``.value`` gives
+            // back the literal source), convert the class-form spans to
+            // real HTML ``<c class="color-..." style="color:#...">``
+            // BEFORE any HTML parsing, then assign innerHTML so the
+            // browser actually pairs ``<c>`` with ``</c>``.
             const formattedContent = document.getElementById('formatted-content');
-            formattedContent.innerHTML = cleanHtml(formattedContent.innerHTML);
+            const rawArea = document.getElementById('raw-content');
+            let initial = (rawArea && typeof rawArea.value === 'string')
+                ? rawArea.value
+                : formattedContent.textContent || '';
+            initial = vttToHtmlColor(initial);
+            formattedContent.innerHTML = initial;
             updateHiddenTextarea();
+            initializeLocalMediaPlayer();
+            initializeSubtitleFontControls();
+            initializeMediaControls();
+            _renderRecentColors();
             
             // Initialize debug panel visibility
             if (isDebugMode) {
@@ -405,6 +729,141 @@
             }
         }
 
+        // Toggle subtitles on/off and handle fullscreen so the overlay
+        // remains visible when the video is fullscreened.
+        function initializeMediaControls() {
+            const mediaFrame = document.querySelector('.media-frame');
+            const subtitleDisplay = document.getElementById('subtitle-display');
+            const ccBtn = document.getElementById('toggle-subtitles');
+            const fsBtn = document.getElementById('toggle-fullscreen');
+            const player = document.getElementById('media-player');
+
+            // Audio-only pages don't have a media-frame or these buttons.
+            if (!mediaFrame || !subtitleDisplay || !ccBtn || !fsBtn || !player) {
+                return;
+            }
+
+            function setSubtitleVisibility(visible) {
+                ccBtn.setAttribute('aria-pressed', visible ? 'true' : 'false');
+                ccBtn.classList.toggle('media-btn--off', !visible);
+                const label = ccBtn.querySelector('.media-btn__label');
+                if (label) label.textContent = visible ? 'On' : 'Off';
+                subtitleDisplay.classList.toggle('subtitle-hidden', !visible);
+            }
+
+            // Default: subtitles visible.
+            setSubtitleVisibility(true);
+
+            ccBtn.addEventListener('click', function () {
+                const nowVisible = ccBtn.getAttribute('aria-pressed') !== 'true';
+                setSubtitleVisibility(nowVisible);
+            });
+
+            function currentFsElement() {
+                return document.fullscreenElement || document.webkitFullscreenElement || null;
+            }
+            function isFrameFullscreen() {
+                return currentFsElement() === mediaFrame;
+            }
+            function isFullscreen() {
+                return !!currentFsElement();
+            }
+
+            function requestFs(el) {
+                const req = el.requestFullscreen || el.webkitRequestFullscreen;
+                if (req) return req.call(el);
+            }
+            function exitFs() {
+                const exit = document.exitFullscreen || document.webkitExitFullscreen;
+                if (exit) return exit.call(document);
+            }
+
+            fsBtn.addEventListener('click', function () {
+                if (isFullscreen()) {
+                    exitFs();
+                } else {
+                    requestFs(mediaFrame);
+                }
+            });
+
+            function updateFsLabel() {
+                const label = fsBtn.querySelector('.media-btn__label');
+                if (label) label.textContent = isFullscreen() ? 'Exit' : 'Fullscreen';
+            }
+
+            // If the browser still surfaces a native fullscreen button (Safari
+            // / Firefox ignore controlslist), redirect that to media-frame
+            // fullscreen so the overlay subtitle stays visible.
+            function onFsChange() {
+                updateFsLabel();
+                const fs = currentFsElement();
+                if (fs && fs !== mediaFrame) {
+                    // Native fullscreen on <video> only - swap to whole frame.
+                    Promise.resolve(exitFs()).finally(function () {
+                        // Wait a tick so the browser releases fullscreen state
+                        // before we request it on the parent frame.
+                        setTimeout(function () { requestFs(mediaFrame); }, 50);
+                    });
+                }
+            }
+            document.addEventListener('fullscreenchange', onFsChange);
+            document.addEventListener('webkitfullscreenchange', onFsChange);
+
+            // iOS Safari uses element-level events on <video> itself.
+            player.addEventListener('webkitbeginfullscreen', function () {
+                // iOS only lets the <video> element go fullscreen, so the
+                // overlay can't ride along. Best we can do is keep button
+                // state in sync.
+                updateFsLabel();
+            });
+            player.addEventListener('webkitendfullscreen', updateFsLabel);
+
+            // Keyboard shortcuts (ignore when typing in inputs/editor).
+            document.addEventListener('keydown', function (e) {
+                const target = e.target;
+                if (target && (target.tagName === 'INPUT' ||
+                               target.tagName === 'TEXTAREA' ||
+                               target.isContentEditable)) {
+                    return;
+                }
+                if (e.key === 'c' || e.key === 'C') {
+                    e.preventDefault();
+                    ccBtn.click();
+                } else if (e.key === 'f' || e.key === 'F') {
+                    e.preventDefault();
+                    fsBtn.click();
+                }
+            });
+        }
+
+        function initializeSubtitleFontControls() {
+            const subtitleDisplay = document.getElementById('subtitle-display');
+            const fontSizeInput = document.getElementById('subtitle-font-size');
+            const fontSizeValue = document.getElementById('subtitle-font-size-value');
+
+            if (!subtitleDisplay || !fontSizeInput || !fontSizeValue) return;
+
+            const storageKey = 'subtitleFontSize';
+            const minSize = Number(fontSizeInput.min);
+            const maxSize = Number(fontSizeInput.max);
+
+            function applyFontSize(size) {
+                const parsedSize = Number(size);
+                const fallbackSize = Number(fontSizeInput.value);
+                const safeSize = Math.min(maxSize, Math.max(minSize, Number.isFinite(parsedSize) ? parsedSize : fallbackSize));
+
+                subtitleDisplay.style.setProperty('--subtitle-font-size', `${safeSize}px`);
+                fontSizeInput.value = safeSize;
+                fontSizeValue.textContent = `${safeSize}px`;
+                localStorage.setItem(storageKey, String(safeSize));
+            }
+
+            applyFontSize(localStorage.getItem(storageKey) || fontSizeInput.value);
+            fontSizeInput.addEventListener('input', function() {
+                applyFontSize(fontSizeInput.value);
+            });
+        }
+
         // Format timestamp for debug display
         function formatSecondsToTimestamp(seconds) {
             const h = Math.floor(seconds / 3600);
@@ -437,7 +896,23 @@
                 line = line
                     .replace(/<u><\/u>/g, '')
                     .replace(/<u><\/u><u><\/u>/g, '')
-                    .replace(/<(?!\/?(u|b)\b)[^>]+>/gi, '')
+                    // Convert editor's HTML color spans to VTT class form
+                    // (``<c class="color-FF0000" ...>`` -> ``<c.color-FF0000>``)
+                    // BEFORE the strip step so they pass the allowlist below.
+                    .replace(
+                        /<c\b[^>]*\bclass\s*=\s*["']([^"']+)["'][^>]*>/gi,
+                        function (_full, cls) {
+                            const parts = cls.trim().split(/\s+/).filter(Boolean);
+                            return parts.length ? '<c.' + parts.join('.') + '>' : '<c>';
+                        }
+                    )
+                    // Allowed tags: <u> </u> <b> </b> <i> </i>
+                    //               <c.classname[.cls2...]>  </c>
+                    .replace(/<[^>]+>/g, function (m) {
+                        return /^<\/?(?:u|b|i)>$|^<c(?:\.[A-Za-z0-9_-]+)+>$|^<\/c>$/i.test(m)
+                            ? m
+                            : '';
+                    })
                     .replace(/--&gt;/g, '-->')
                     .trim();
 
@@ -476,8 +951,13 @@
             document.getElementById("raw-content").value = cleanedContent;
         }
 
-        // Toggle primary stress for selected text
-        function togglePrimaryStress() {
+        // ---------- Accent / stress / pitch handlers ----------
+
+        // Wrap each letter of the selection in NESTED tags, e.g. ['u', 'b']
+        // produces "<u><b>L</b></u>". Non-letters stay as plain text so a
+        // partially-stressed word renders correctly:
+        //     n a <u><b>t</b></u><u><b>i</b></u><u><b>o</b></u><u><b>n</b></u>
+        function wrapSelectionPerLetterNested(tagNames) {
             const selection = window.getSelection();
             if (!selection.rangeCount) return;
 
@@ -485,41 +965,108 @@
             const selectedText = range.toString();
             if (!selectedText.trim()) return;
 
-            const words = selectedText.split(/(\s+)/);
-            const container = document.createElement('span');
-
             function isLetter(char) {
                 return /[a-zA-Z]/.test(char);
             }
 
-            words.forEach(word => {
-                if (word.trim()) {
-                    const letters = word.split('');
-                    letters.forEach(letter => {
-                        if (isLetter(letter)) {
-                            const underline = document.createElement('u');
-                            underline.textContent = letter;
-                            container.appendChild(underline);
-                        } else {
-                            container.appendChild(document.createTextNode(letter));
-                        }
-                    });
+            const container = document.createElement('span');
+            for (const ch of selectedText) {
+                if (isLetter(ch)) {
+                    let leaf = document.createTextNode(ch);
+                    // Build inside-out so the FIRST tag becomes the OUTERMOST.
+                    for (let i = tagNames.length - 1; i >= 0; i--) {
+                        const wrap = document.createElement(tagNames[i]);
+                        wrap.appendChild(leaf);
+                        leaf = wrap;
+                    }
+                    container.appendChild(leaf);
                 } else {
-                    container.appendChild(document.createTextNode(word));
+                    container.appendChild(document.createTextNode(ch));
                 }
-            });
+            }
 
             range.deleteContents();
             range.insertNode(container);
-            
+
             selection.removeAllRanges();
             updateHiddenTextarea();
-            
-            // After editing, update the subtitle data
             parseVTTContent();
         }
 
-        // Apply non-stress formatting to selected text
+        // Strip the given <tagName>s from inside the current selection,
+        // leaving other inline formatting intact.
+        function unwrapSelectionTags(tagNames) {
+            const selection = window.getSelection();
+            if (!selection.rangeCount) return;
+
+            const range = selection.getRangeAt(0);
+            if (range.collapsed) return;
+            const selectedText = range.toString();
+            if (!selectedText.trim()) return;
+
+            const frag = range.cloneContents();
+            const tmp = document.createElement('div');
+            tmp.appendChild(frag);
+
+            let html = tmp.innerHTML;
+            for (const tag of tagNames) {
+                const tagRe = new RegExp('</?' + tag + '\\b[^>]*>', 'gi');
+                html = html.replace(tagRe, '');
+            }
+            tmp.innerHTML = html;
+
+            range.deleteContents();
+            const insertFrag = document.createDocumentFragment();
+            while (tmp.firstChild) insertFrag.appendChild(tmp.firstChild);
+            range.insertNode(insertFrag);
+
+            selection.removeAllRanges();
+            updateHiddenTextarea();
+            parseVTTContent();
+        }
+
+        // Primary accent  = underline + bold (heavier stress) per letter.
+        function applyPrimaryAccent()   { wrapSelectionPerLetterNested(['u', 'b']); }
+        function removePrimaryAccent()  { unwrapSelectionTags(['u', 'b']); }
+
+        // Secondary accent = underline only (lighter stress) per letter.
+        function applySecondaryAccent()  { wrapSelectionPerLetterNested(['u']); }
+        function removeSecondaryAccent() { unwrapSelectionTags(['u']); }
+
+        // High / Low pitch: prepend an arrow glyph in FRONT OF each
+        // whitespace-delimited word in the selection. The arrow is plain
+        // unicode text - it survives VTT serialization without any tags.
+        function _applyPitchArrow(arrow) {
+            const selection = window.getSelection();
+            if (!selection.rangeCount) return;
+
+            const range = selection.getRangeAt(0);
+            const selectedText = range.toString();
+            if (!selectedText.trim()) return;
+
+            // Strip any pre-existing pitch arrows from previous applications
+            // so toggling stays idempotent for the user, and split into
+            // word/whitespace tokens preserving spaces.
+            const pitchRe = /[\u2191\u2193]/g;
+            const cleaned = selectedText.replace(pitchRe, '');
+            const tokens = cleaned.split(/(\s+)/);
+            const decorated = tokens
+                .map(tok => (tok.trim() ? arrow + tok : tok))
+                .join('');
+
+            range.deleteContents();
+            range.insertNode(document.createTextNode(decorated));
+
+            selection.removeAllRanges();
+            updateHiddenTextarea();
+            parseVTTContent();
+        }
+
+        function applyHighPitch() { _applyPitchArrow('\u2191'); } // up arrow
+        function applyLowPitch()  { _applyPitchArrow('\u2193'); } // down arrow
+
+        // Non-Stress: strip every inline formatting AND pitch arrows from
+        // the selection, leaving the bare text behind.
         function applyNonStress() {
             const selection = window.getSelection();
             if (!selection.rangeCount) return;
@@ -528,20 +1075,227 @@
             const selectedText = range.toString();
             if (!selectedText.trim()) return;
 
-            const textNode = document.createTextNode(selectedText);
+            const plain = selectedText.replace(/[\u2191\u2193]/g, '');
             range.deleteContents();
-            range.insertNode(textNode);
+            range.insertNode(document.createTextNode(plain));
 
             selection.removeAllRanges();
             updateHiddenTextarea();
-            
-            // After editing, update the subtitle data
             parseVTTContent();
         }
+
+        // ---------- Speaker color ----------
+        //
+        // Colors are stored as VTT class spans (``<c.color-RRGGBB>...</c>``)
+        // because that is the on-disk format the VTT spec defines. In the
+        // contenteditable editor we instead use plain HTML
+        //     <c class="color-RRGGBB" style="color:#RRGGBB">...</c>
+        // so the browser actually paints the color. ``vttToHtmlColor`` /
+        // ``htmlToVttColor`` translate between the two whenever content
+        // crosses the editor / textarea boundary.
+
+        function _hexNoHash(hex) {
+            return (hex || '').replace(/^#/, '').toUpperCase();
+        }
+
+        // Translate VTT-style color spans into editor HTML.
+        //     <c.color-FF0000>text</c>
+        //  -> <c class="color-FF0000" style="color:#FF0000">text</c>
+        function vttToHtmlColor(html) {
+            if (!html) return html;
+            return html.replace(
+                /<c((?:\.[A-Za-z0-9_-]+)+)>/gi,
+                function (_full, dotted) {
+                    // dotted == ".color-FF0000" or ".speaker1.color-FF0000" etc.
+                    const classes = dotted.slice(1).split('.');
+                    const colorCls = classes.find(c => /^color-[A-Fa-f0-9]{6}$/.test(c));
+                    const style = colorCls ? ' style="color:#' + colorCls.slice(6) + '"' : '';
+                    return '<c class="' + classes.join(' ') + '"' + style + '>';
+                }
+            );
+        }
+
+        // Translate editor HTML color spans back to VTT class form.
+        //     <c class="color-FF0000" style="color:#FF0000">text</c>
+        //  -> <c.color-FF0000>text</c>
+        function htmlToVttColor(html) {
+            if (!html) return html;
+            return html.replace(
+                /<c\b[^>]*\bclass\s*=\s*["']([^"']+)["'][^>]*>/gi,
+                function (_full, cls) {
+                    const parts = cls.trim().split(/\s+/).filter(Boolean);
+                    if (!parts.length) return '<c>';
+                    return '<c.' + parts.join('.') + '>';
+                }
+            );
+        }
+
+        // Apply ``hexOverride`` (e.g. "#FF8800") if provided, otherwise read
+        // the picker. The chosen color is also synced back to the picker and
+        // pushed to the recent-colors strip on success.
+        function applySpeakerColor(hexOverride) {
+            const picker = document.getElementById('speaker-color');
+            let hex = hexOverride || (picker ? picker.value : '#000000');
+            hex = _normaliseHex(hex);
+            const cls = 'color-' + _hexNoHash(hex);
+
+            const selection = window.getSelection();
+            if (!selection.rangeCount) return;
+            const range = selection.getRangeAt(0);
+            if (range.collapsed) return;
+            const selectedText = range.toString();
+            if (!selectedText.trim()) return;
+
+            // Strip any pre-existing color span inside the selection first
+            // so we don't end up with nested colors fighting each other.
+            const frag = range.cloneContents();
+            const tmp = document.createElement('div');
+            tmp.appendChild(frag);
+            tmp.querySelectorAll('c').forEach(function (node) {
+                const parent = node.parentNode;
+                while (node.firstChild) parent.insertBefore(node.firstChild, node);
+                parent.removeChild(node);
+            });
+
+            const wrapper = document.createElement('c');
+            wrapper.className = cls;
+            wrapper.style.color = hex;
+            while (tmp.firstChild) wrapper.appendChild(tmp.firstChild);
+
+            range.deleteContents();
+            range.insertNode(wrapper);
+
+            selection.removeAllRanges();
+            updateHiddenTextarea();
+            parseVTTContent();
+
+            // Successful apply -> remember this color for next time and sync
+            // the picker so subsequent clicks of the bare "Apply Color" use
+            // the same color the user just picked from the swatch.
+            if (picker) picker.value = hex;
+            _pushRecentColor(hex);
+            _renderRecentColors();
+        }
+
+        function clearSpeakerColor() {
+            const selection = window.getSelection();
+            if (!selection.rangeCount) return;
+            const range = selection.getRangeAt(0);
+            if (range.collapsed) return;
+            const selectedText = range.toString();
+            if (!selectedText.trim()) return;
+
+            const frag = range.cloneContents();
+            const tmp = document.createElement('div');
+            tmp.appendChild(frag);
+
+            // Unwrap every <c> element inside, preserving its children.
+            tmp.querySelectorAll('c').forEach(function (node) {
+                const parent = node.parentNode;
+                while (node.firstChild) parent.insertBefore(node.firstChild, node);
+                parent.removeChild(node);
+            });
+
+            range.deleteContents();
+            const insertFrag = document.createDocumentFragment();
+            while (tmp.firstChild) insertFrag.appendChild(tmp.firstChild);
+            range.insertNode(insertFrag);
+
+            selection.removeAllRanges();
+            updateHiddenTextarea();
+            parseVTTContent();
+        }
+
+        // ---------- Recent speaker colors ----------
+        //
+        // We keep up to RECENT_COLORS_MAX recently-applied colors in
+        // localStorage so the user can re-apply common speaker colors with
+        // one click instead of re-opening the system color picker. The list
+        // is seeded with sensible defaults on first load so the strip is
+        // immediately useful.
+
+        const RECENT_COLORS_KEY = 'cc.recentSpeakerColors';
+        const RECENT_COLORS_MAX = 4;
+        const RECENT_COLORS_DEFAULTS = ['#1E88E5', '#E53935', '#43A047', '#FB8C00'];
+
+        function _normaliseHex(hex) {
+            if (!hex) return '#000000';
+            let h = String(hex).trim();
+            if (!h.startsWith('#')) h = '#' + h;
+            // Expand short form (#abc -> #aabbcc) just in case.
+            if (/^#[0-9a-f]{3}$/i.test(h)) {
+                h = '#' + h.slice(1).split('').map(c => c + c).join('');
+            }
+            if (!/^#[0-9a-f]{6}$/i.test(h)) return '#000000';
+            return h.toUpperCase();
+        }
+
+        function _loadRecentColors() {
+            try {
+                const raw = localStorage.getItem(RECENT_COLORS_KEY);
+                if (raw) {
+                    const arr = JSON.parse(raw);
+                    if (Array.isArray(arr)) {
+                        const cleaned = arr
+                            .map(_normaliseHex)
+                            .filter((h, i, a) => a.indexOf(h) === i);
+                        if (cleaned.length) return cleaned.slice(0, RECENT_COLORS_MAX);
+                    }
+                }
+            } catch (_) { /* ignore corrupt storage */ }
+            return RECENT_COLORS_DEFAULTS.slice(0, RECENT_COLORS_MAX);
+        }
+
+        function _saveRecentColors(colors) {
+            try {
+                localStorage.setItem(RECENT_COLORS_KEY, JSON.stringify(colors));
+            } catch (_) { /* storage may be unavailable; fall back to in-memory */ }
+        }
+
+        function _pushRecentColor(hex) {
+            const norm = _normaliseHex(hex);
+            const current = _loadRecentColors().filter(c => c !== norm);
+            current.unshift(norm);
+            const trimmed = current.slice(0, RECENT_COLORS_MAX);
+            _saveRecentColors(trimmed);
+            return trimmed;
+        }
+
+        function _renderRecentColors() {
+            const host = document.getElementById('recent-colors');
+            if (!host) return;
+            const colors = _loadRecentColors();
+            host.innerHTML = '';
+            for (let i = 0; i < RECENT_COLORS_MAX; i++) {
+                const hex = colors[i];
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'recent-color-swatch' + (hex ? '' : ' is-empty');
+                if (hex) {
+                    btn.style.backgroundColor = hex;
+                    btn.title = 'Apply ' + hex;
+                    btn.setAttribute('aria-label', 'Apply color ' + hex);
+                    btn.dataset.color = hex;
+                    btn.addEventListener('click', function () {
+                        applySpeakerColor(hex);
+                    });
+                } else {
+                    btn.disabled = true;
+                    btn.setAttribute('aria-label', 'Empty recent color slot');
+                    btn.title = 'No recent color yet';
+                }
+                host.appendChild(btn);
+            }
+        }
+
+        // Set when the user explicitly chooses to discard changes so the
+        // pagehide auto-save handler does NOT overwrite the file.
+        window.__skipAutoSave = false;
 
         // Cancel editing and return to files page
         function cancelEdit() {
             if (confirm('Are you sure you want to cancel? All changes will be lost.')) {
+                window.__skipAutoSave = true;
                 window.location.href = '/your_files';
             }
         }
@@ -551,7 +1305,7 @@
             updateHiddenTextarea();
             var rawContent = document.getElementById("raw-content").value;
 
-            fetch(`/save_vtt/{{ audio_id }}`, {
+            ccFetch(`/save_vtt/{{ audio_id }}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -577,7 +1331,7 @@
             updateHiddenTextarea();
             var rawContent = document.getElementById("raw-content").value;
 
-            fetch(`/save_vtt/{{ audio_id }}`, {
+            ccFetch(`/save_vtt/{{ audio_id }}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -755,6 +1509,7 @@
         function displaySubtitle(currentTime) {
             try {
                 const subtitleDisplay = document.getElementById('subtitle-display');
+                const usesOverlay = subtitleDisplay.classList.contains('subtitle-overlay');
                 
                 // Add extra debug info if debug mode is on
                 if (isDebugMode) {
@@ -802,12 +1557,16 @@
                 }
                 
                 if (subtitle) {
+                    subtitleDisplay.classList.remove('subtitle-empty');
                     // Create a fresh div to prevent formatting issues
                     const subtitleDiv = document.createElement('div');
                     subtitleDiv.className = 'subtitle-text';
-                    
-                    // Set the text including HTML formatting from the VTT
-                    subtitleDiv.innerHTML = subtitle.text;
+
+                    // VTT cue text uses class-form color spans
+                    // (``<c.color-FF0000>``). Translate them into HTML
+                    // spans with inline ``color`` so the browser actually
+                    // paints them in the overlay.
+                    subtitleDiv.innerHTML = vttToHtmlColor(subtitle.text);
                     
                     // Display the subtitle
                     subtitleDisplay.innerHTML = '';
@@ -827,7 +1586,12 @@
                     debugLog(`Showing subtitle ${currentSubtitleIndex+1}/${subtitles.length} at ${formatSecondsToTimestamp(currentTime)}`);
                 } else {
                     // No subtitle at this time
-                    subtitleDisplay.innerHTML = '<div class="subtitle-text no-subtitle">No subtitle at this time</div>';
+                    if (usesOverlay) {
+                        subtitleDisplay.classList.add('subtitle-empty');
+                        subtitleDisplay.innerHTML = '';
+                    } else {
+                        subtitleDisplay.innerHTML = '<div class="subtitle-text no-subtitle">No subtitle at this time</div>';
+                    }
                     
                     // Log when we enter a "no subtitle" state
                     if (currentSubtitleIndex !== -1) {
@@ -840,191 +1604,119 @@
                 debugLog(`Error displaying subtitle: ${error.message}`);
                 
                 // Recover from error by displaying a fallback message
-                document.getElementById('subtitle-display').innerHTML = 
-                    '<div class="subtitle-text no-subtitle">Subtitle display error</div>';
+                const subtitleDisplay = document.getElementById('subtitle-display');
+                if (subtitleDisplay.classList.contains('subtitle-overlay')) {
+                    subtitleDisplay.classList.add('subtitle-empty');
+                    subtitleDisplay.innerHTML = '';
+                } else {
+                    subtitleDisplay.innerHTML = '<div class="subtitle-text no-subtitle">Subtitle display error</div>';
+                }
             }
         }
 
-        // YouTube callback when API is ready
-        function onYouTubeIframeAPIReady() {
-            debugLog("YouTube API Ready");
-        }
+        function initializeLocalMediaPlayer() {
+            mediaPlayer = document.getElementById('media-player');
+            if (!mediaPlayer) return;
 
-        // Load YouTube video - improved version
-        function loadYouTubeVideo() {
-            try {
-                const url = document.getElementById('youtube-url').value;
-                const videoId = extractVideoId(url);
-                
-                if (!videoId) {
-                    alert('Please enter a valid YouTube URL or video ID');
-                    return;
-                }
-                
-                debugLog(`Loading video ID: ${videoId}`);
-                
-                // Get VTT content before initializing the player
-                // This ensures subtitles are ready when video starts
-                const subtitleData = parseVTTContent();
-                debugLog(`Loaded ${subtitleData.length} subtitles before initializing player`);
-                
-                // If there's an existing player, destroy it
-                if (player) {
-                    clearInterval(subtitleCheckInterval);
-                    player.destroy();
-                }
-                
-                // Reset subtitle tracking variables
+            parseVTTContent();
+            const subtitleDisplay = document.getElementById('subtitle-display');
+            if (subtitleDisplay.classList.contains('subtitle-overlay')) {
+                subtitleDisplay.classList.add('subtitle-empty');
+                subtitleDisplay.innerHTML = '';
+            } else {
+                subtitleDisplay.innerHTML =
+                    '<div class="subtitle-text no-subtitle">Media loaded. Press play to see subtitles.</div>';
+            }
+
+            mediaPlayer.addEventListener('play', function() {
                 currentSubtitleIndex = -1;
-                
-                // Create a new player with optimal settings for subtitle sync
-                player = new YT.Player('youtube-player', {
-                    height: '100%',
-                    width: '100%',
-                    videoId: videoId,
-                    playerVars: {
-                        'playsinline': 1,
-                        'controls': 1,
-                        'enablejsapi': 1,
-                        'origin': window.location.origin,
-                        'modestbranding': 1,
-                        'iv_load_policy': 3, // Hide video annotations
-                        'rel': 0 // Don't show related videos
-                    },
-                    events: {
-                        'onReady': onPlayerReady,
-                        'onStateChange': onPlayerStateChange,
-                        'onError': onPlayerError
-                    }
-                });
-                
-                // Initialize subtitle display
-                document.getElementById('subtitle-display').innerHTML = 
-                    '<div class="subtitle-text no-subtitle">Video loaded. Press play to see subtitles.</div>';
-                
-                // Add a tip message about timing
-                const tipDiv = document.createElement('div');
-                tipDiv.style.marginTop = '10px';
-                tipDiv.style.fontSize = '14px';
-                tipDiv.style.color = '#666';
-                tipDiv.textContent = 'Tip: You can edit subtitles in the left panel and they will sync with the video.';
-                document.getElementById('subtitle-display').appendChild(tipDiv);
-                
-                // Enable debug mode through URL parameter
-                const urlParams = new URLSearchParams(window.location.search);
-                if (urlParams.has('debug')) {
-                    isDebugMode = true;
-                    document.getElementById('debug-panel').style.display = 'block';
-                    debugLog("Debug mode enabled via URL parameter");
+                parseVTTContent();
+                if (subtitleCheckInterval) {
+                    clearInterval(subtitleCheckInterval);
                 }
-            } catch (error) {
-                console.error("Error loading video:", error);
-                debugLog(`Error loading video: ${error.message}`);
-                alert('Error loading video. Please try again.');
+                displaySubtitle(mediaPlayer.currentTime || 0);
+                subtitleCheckInterval = setInterval(function() {
+                    displaySubtitle(mediaPlayer.currentTime || 0);
+                }, SYNC_REFRESH_RATE);
+            });
+
+            mediaPlayer.addEventListener('timeupdate', function() {
+                displaySubtitle(mediaPlayer.currentTime || 0);
+            });
+
+            mediaPlayer.addEventListener('seeked', function() {
+                currentSubtitleIndex = -1;
+                displaySubtitle(mediaPlayer.currentTime || 0);
+            });
+
+            mediaPlayer.addEventListener('pause', function() {
+                if (subtitleCheckInterval) {
+                    clearInterval(subtitleCheckInterval);
+                }
+                displaySubtitle(mediaPlayer.currentTime || 0);
+            });
+
+            mediaPlayer.addEventListener('ended', function() {
+                if (subtitleCheckInterval) {
+                    clearInterval(subtitleCheckInterval);
+                }
+                const subtitleDisplay = document.getElementById('subtitle-display');
+                if (subtitleDisplay.classList.contains('subtitle-overlay')) {
+                    subtitleDisplay.classList.add('subtitle-empty');
+                    subtitleDisplay.innerHTML = '';
+                } else {
+                    subtitleDisplay.innerHTML =
+                        '<div class="subtitle-text no-subtitle">Media has ended</div>';
+                }
+            });
+
+            mediaPlayer.addEventListener('error', function() {
+                const subtitleDisplay = document.getElementById('subtitle-display');
+                if (subtitleDisplay.classList.contains('subtitle-overlay')) {
+                    subtitleDisplay.classList.add('subtitle-empty');
+                    subtitleDisplay.innerHTML = '';
+                } else {
+                    subtitleDisplay.innerHTML =
+                        '<div class="subtitle-text no-subtitle">Error loading media</div>';
+                }
+            });
+
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('debug')) {
+                isDebugMode = true;
+                document.getElementById('debug-panel').style.display = 'block';
+                debugLog("Debug mode enabled via URL parameter");
             }
         }
 
-        // YouTube player ready callback
-        function onPlayerReady(event) {
-            debugLog("Player ready");
-        }
-
-        // YouTube player state change callback - improved version
-        function onPlayerStateChange(event) {
+        // Auto-save when the page is being hidden (tab close, navigation,
+        // back/forward, etc.). ``pagehide`` is more reliable than
+        // ``beforeunload`` -- Chrome blocks fetch in beforeunload but lets
+        // sendBeacon fire from pagehide.
+        //
+        // sendBeacon cannot set custom headers, so we pack the CSRF token
+        // into a FormData body which Flask-WTF reads as ``csrf_token``.
+        function autoSaveBeacon() {
+            if (window.__skipAutoSave) return false;
             try {
-                // When the video is playing (1) start checking for subtitles
-                if (event.data === YT.PlayerState.PLAYING) {
-                    debugLog("Video is playing");
-                    
-                    // Reset subtitle index to force a full search on play
-                    currentSubtitleIndex = -1;
-                    
-                    // Parse VTT content to ensure we have latest subtitles
-                    parseVTTContent();
-                    
-                    // Clear any existing interval
-                    if (subtitleCheckInterval) {
-                        clearInterval(subtitleCheckInterval);
-                    }
-                    
-                    // Immediately display current subtitle
-                    try {
-                        const currentTime = player.getCurrentTime();
-                        displaySubtitle(currentTime);
-                    } catch (e) {
-                        console.error("Error getting initial subtitle:", e);
-                    }
-                    
-                    // Check for subtitles more frequently (60ms) for better synchronization
-                    // This provides smoother transitions and more accurate timing
-                    subtitleCheckInterval = setInterval(() => {
-                        try {
-                            if (player && typeof player.getCurrentTime === 'function') {
-                                const currentTime = player.getCurrentTime();
-                                displaySubtitle(currentTime);
-                            }
-                        } catch (e) {
-                            console.error("Error in subtitle interval:", e);
-                            debugLog(`Interval error: ${e.message}`);
-                        }
-                    }, SYNC_REFRESH_RATE);
-                } else if (event.data === YT.PlayerState.PAUSED) {
-                    debugLog("Video is paused");
-                    // Keep the current subtitle visible but clear the interval
-                    clearInterval(subtitleCheckInterval);
-                    
-                    // Show one final update with the paused time
-                    try {
-                        const currentTime = player.getCurrentTime();
-                        displaySubtitle(currentTime);
-                    } catch (e) {
-                        console.error("Error updating subtitle on pause:", e);
-                    }
-                } else if (event.data === YT.PlayerState.ENDED) {
-                    debugLog("Video has ended");
-                    // Clear interval and reset subtitle display
-                    clearInterval(subtitleCheckInterval);
-                    document.getElementById('subtitle-display').innerHTML = 
-                        '<div class="subtitle-text no-subtitle">Video has ended</div>';
-                }
-            } catch (error) {
-                console.error("Error handling player state change:", error);
-                debugLog(`Error in state change: ${error.message}`);
+                updateHiddenTextarea();
+                const raw = document.getElementById("raw-content").value;
+                const fd = new FormData();
+                fd.append("content", raw);
+                if (window.ccCsrfToken) fd.append("csrf_token", window.ccCsrfToken);
+                return navigator.sendBeacon(
+                    `/save_vtt/{{ audio_id }}`,
+                    fd
+                );
+            } catch (err) {
+                return false;
             }
         }
 
-        // YouTube player error callback
-        function onPlayerError(event) {
-            debugLog(`Player error: ${event.data}`);
-            document.getElementById('subtitle-display').innerHTML = 
-                '<div class="subtitle-text no-subtitle">Error loading video</div>';
-        }
-
-        // Extract YouTube video ID from URL
-        function extractVideoId(url) {
-            const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
-            const match = url.match(regex);
-            
-            if (match && match[1]) {
-                return match[1];
-            } else if (url.length === 11 && /^[a-zA-Z0-9_-]{11}$/.test(url)) {
-                return url; // This is likely a video ID already
-            }
-            return null;
-        }
-
-        // Auto-save when navigating away
-        window.addEventListener("beforeunload", function (e) {
-            updateHiddenTextarea();
-            
-            // Send a final save request
-            navigator.sendBeacon(
-                `/save_vtt/{{ audio_id }}`,
-                JSON.stringify({
-                    content: document.getElementById("raw-content").value
-                })
-            );
-        });
+        window.addEventListener("pagehide", autoSaveBeacon);
+        // Fallback for environments where pagehide does not fire (rare,
+        // but harmless: the same payload would just be saved twice).
+        window.addEventListener("beforeunload", autoSaveBeacon);
 
         // Listen for changes in the editable div
         document.getElementById('formatted-content').addEventListener('input', function() {
@@ -1044,7 +1736,7 @@
             }
             
             // ส่งคำขอเปลี่ยนชื่อไปยังเซิร์ฟเวอร์
-            fetch(`/rename_vtt/{{ audio_id }}`, {
+            ccFetch(`/rename_vtt/{{ audio_id }}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

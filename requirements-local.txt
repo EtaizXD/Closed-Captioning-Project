@@ -1,0 +1,11 @@
+# Optional dependencies for running Faster Whisper IN-PROCESS on the
+# Flask host (i.e. when ``WHISPER_BACKEND=local``). Install on top of
+# ``requirements.txt``:
+#
+#     pip install -r requirements.txt
+#     pip install -r requirements-local.txt
+#
+# In production / when using the FastAPI service in ``server/`` you do
+# NOT need to install any of these.
+faster-whisper==1.0.3
+psutil==5.9.8

@@ -37,9 +37,10 @@ div {
 }
 
 .header {
-  font-size: 60px;
-  margin: 100px 0 60px 0 ;
-
+  font-size: 48px;
+  margin: 100px 0 40px 0;
+  line-height: 1.15;
+  padding: 0 16px;
 }
 
 .description {
@@ -298,6 +299,50 @@ audio {
   height: 40px;
 }
 
+.media-preview {
+  width: 260px;
+  max-height: 150px;
+  border-radius: 8px;
+  background: #000;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: white;
+  background-color: #6c757d;
+}
+
+.status-ready {
+  background-color: #28a745;
+}
+
+.status-processing,
+.status-queued,
+.status-uploaded {
+  background-color: #007bff;
+}
+
+.status-failed {
+  background-color: #dc3545;
+}
+
+.status-progress,
+.status-message {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #555;
+}
+
+.action-button:disabled {
+  background-color: #b8b8b8;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .pagination {
   display: flex;
   justify-content: center;
@@ -319,4 +364,131 @@ audio {
 .page-button.active {
   background-color: #0080ff;
   color: white;
+}
+
+/* ---------- Auth diagnostics (flash + per-field errors) ---------- */
+.flash {
+  margin: 12px auto;
+  max-width: 420px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  text-align: center;
+  font-size: 14px;
+}
+
+.flash--success { background: #e6f7ec; border-color: #b6e3c5; color: #186a36; }
+.flash--danger  { background: #fde8ea; border-color: #f6c1c7; color: #8a1c2b; }
+.flash--warning { background: #fff5e6; border-color: #ffd9a3; color: #804600; }
+.flash--info    { background: #e6f2ff; border-color: #b6d8ff; color: #074b85; }
+
+.field-error {
+  display: block;
+  margin-top: 4px;
+  color: #8a1c2b;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  color: #666;
+  font-size: 12px;
+}
+
+/* ---------- Media controls (CC toggle + Fullscreen) ---------- */
+.subtitle-controls__spacer {
+  flex: 1 1 auto;
+}
+
+.media-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid #cfd6de;
+  border-radius: 999px;
+  background: #fff;
+  color: #24303d;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.media-btn:hover {
+  background: #eef4ff;
+  border-color: #0080ff;
+  color: #0060c1;
+}
+
+.media-btn:focus-visible {
+  outline: 2px solid #0080ff;
+  outline-offset: 2px;
+}
+
+.media-btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: #24303d;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.media-btn--toggle[aria-pressed="true"] .media-btn__icon {
+  background: #0080ff;
+}
+
+.media-btn--off .media-btn__icon {
+  background: #9ba3ad;
+}
+
+.media-btn--off {
+  color: #6b7280;
+}
+
+/* Hide overlay subtitles when user toggles CC off. */
+.subtitle-display.subtitle-hidden {
+  visibility: hidden;
+}
+
+/* Fullscreen: make the media-frame fill the screen so the overlay
+   subtitle sits on top of the video instead of being clipped. */
+.media-frame:fullscreen,
+.media-frame:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+
+.media-frame:fullscreen video#media-player,
+.media-frame:-webkit-full-screen video#media-player {
+  width: 100%;
+  height: 100%;
+  max-height: 100vh;
+  object-fit: contain;
+  aspect-ratio: auto;
+}
+
+.media-frame:fullscreen .subtitle-overlay,
+.media-frame:-webkit-full-screen .subtitle-overlay {
+  bottom: clamp(32px, 8vh, 96px);
+}
+
+.media-frame:fullscreen .subtitle-overlay .subtitle-text,
+.media-frame:-webkit-full-screen .subtitle-overlay .subtitle-text {
+  /* Scale overlay font with viewport height while respecting the
+     user-chosen base size. */
+  font-size: max(var(--subtitle-font-size, 22px), 3vh);
 }

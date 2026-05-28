@@ -2,19 +2,37 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Your Audio Files</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}" />
+    <title>Your Media Files · CA-Informed Closed Captioning Tool</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" /> <!-- Add this line -->
+    <script>
+        // Shared CSRF helper. Reads the token from the meta tag above and
+        // attaches it as ``X-CSRFToken`` for every state-changing request.
+        window.ccCsrfToken = (function () {
+            var tag = document.querySelector('meta[name="csrf-token"]');
+            return tag ? tag.getAttribute('content') : '';
+        })();
+        window.ccFetch = function (input, init) {
+            init = init || {};
+            var headers = new Headers(init.headers || {});
+            if (window.ccCsrfToken) headers.set('X-CSRFToken', window.ccCsrfToken);
+            init.headers = headers;
+            return fetch(input, init);
+        };
+    </script>
 </head>
 <body>
     {% include 'nav.html' %}
-    <h1>Audio Files</h1>
+    <h1>Media Files</h1>
     <div class="table-container">
         <table>
             <thead>
                 <tr>
                     <th>No.</th>
                     <th>File Name</th>
+                    <th>Type</th>
                     <th>Play</th>
+                    <th>Status</th>
                     <th>Upload Date</th>
                     <th>Download VTT</th>
                     <th>Edit VTT File</th>
@@ -27,22 +45,50 @@
                 <tr>
                     <td>{{ start_idx + loop.index }}</td>
                     <td>{{ file[2] }}</td>
+                    <td>{{ file[6]|title }}</td>
                     <td>
-                        <audio controls>
-                            <source src="{{ url_for('get_audio', audio_id=file[0]) }}" type="{{ file[3] }}">
-                            Your browser does not support the audio element.
-                        </audio>
+                        {% if file[6] == 'video' %}
+                            <video controls preload="metadata" class="media-preview" data-base-src="{{ url_for('get_audio', audio_id=file[0]) }}">
+                                <source src="{{ url_for('get_audio', audio_id=file[0]) }}" type="video/mp4">
+                                Your browser does not support the video element.
+                            </video>
+                            {% if file[7] != 'ready' %}
+                                <div class="status-message">Preparing browser video preview...</div>
+                            {% endif %}
+                        {% else %}
+                            <audio controls>
+                                <source src="{{ url_for('get_audio', audio_id=file[0]) }}" type="{{ file[3] }}">
+                                Your browser does not support the audio element.
+                            </audio>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="status-badge status-{{ file[7] }}">{{ file[7]|title }}</span>
+                        {% if file[7] != 'ready' %}
+                            <div class="status-progress">{{ file[8] }}%</div>
+                            <div class="status-message">{{ file[9] }}</div>
+                        {% endif %}
                     </td>
                     <td>{{ file[5] }}</td>
                     <td>
-                        <a href="{{ url_for('download_vtt', audio_id=file[0]) }}" download>
-                            <button class="action-button download">Download</button>
-                        </a>
+                        {% if file[7] == 'ready' %}
+                            <a href="{{ url_for('download_vtt', audio_id=file[0]) }}" download>
+                                <button class="action-button download">Download</button>
+                            </a>
+                        {% else %}
+                            <button class="action-button download" disabled>Download</button>
+                        {% endif %}
                     </td>
                     <td>
-                        <a href="{{ url_for('edit', audio_id=file[0]) }}">
-                            <button class="action-button edit">Edit</button>
-                        </a>
+                        {% if file[7] == 'ready' %}
+                            <a href="{{ url_for('edit', audio_id=file[0]) }}">
+                                <button class="action-button edit">Edit</button>
+                            </a>
+                        {% elif file[7] == 'failed' %}
+                            <button class="action-button edit" onclick="retryJob('{{ file[0] }}', this)">Retry</button>
+                        {% else %}
+                            <button class="action-button edit" disabled>Processing</button>
+                        {% endif %}
                     </td>
                     <td>
                         <button class="action-button delete" onclick="deleteAudio('{{ file[0] }}')">Delete</button>
@@ -72,23 +118,76 @@
 
     <script>
         function deleteAudio(audioId) {
-            if (confirm('Are you sure you want to delete this audio file?')) {
-                fetch(`/delete-audio/${audioId}`, {
-                    method: 'DELETE',
-                })
+            if (!confirm('Are you sure you want to delete this media file?')) return;
+            ccFetch(`/delete-audio/${audioId}`, { method: 'DELETE' })
                 .then(response => {
                     if (response.ok) {
                         window.location.reload();
                     } else {
-                        alert('Error deleting audio file');
+                        alert('Error deleting media file');
                     }
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    alert('Error deleting audio file');
+                    alert('Error deleting media file');
                 });
-            }
         }
+
+        function retryJob(audioId, button) {
+            if (button) {
+                button.disabled = true;
+                button.textContent = 'Retrying...';
+            }
+            ccFetch(`/retry_job/${audioId}`, { method: 'POST' })
+                .then(response => response.json().then(data => ({ ok: response.ok, data })))
+                .then(({ ok, data }) => {
+                    if (ok) {
+                        window.location.reload();
+                    } else {
+                        alert((data && data.error) || 'Failed to start retry.');
+                        if (button) {
+                            button.disabled = false;
+                            button.textContent = 'Retry';
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Failed to start retry.');
+                    if (button) {
+                        button.disabled = false;
+                        button.textContent = 'Retry';
+                    }
+                });
+        }
+
+        document.querySelectorAll('video.media-preview').forEach((video) => {
+            const source = video.querySelector('source');
+            const baseSrc = video.dataset.baseSrc;
+            let attempts = 0;
+
+            function retryLoad() {
+                if (!source || !baseSrc || video.readyState > 0 || attempts >= 20) {
+                    return;
+                }
+                attempts += 1;
+                source.src = `${baseSrc}?retry=${Date.now()}`;
+                video.load();
+            }
+
+            video.addEventListener('error', retryLoad);
+            if (source) {
+                source.addEventListener('error', retryLoad);
+            }
+
+            const retryInterval = setInterval(() => {
+                if (video.readyState > 0 || attempts >= 20) {
+                    clearInterval(retryInterval);
+                    return;
+                }
+                retryLoad();
+            }, 3000);
+        });
     </script>
 </body>
 </html>

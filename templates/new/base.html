@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}CA-Informed Closed Captioning Tool{% endblock %}</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/new.css') }}">
+    {% block head_extra %}{% endblock %}
+</head>
+<body>
+    {% include 'new/nav.html' %}
+
+    <main class="page {% block page_modifier %}{% endblock %}">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert--{{ category if category in ['info','success','warning','danger'] else 'info' }}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% if session.get('message') %}
+            <div class="alert alert--danger">{{ session['message'] }}</div>
+            {% set _ = session.pop('message', None) %}
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="app-footer">
+        Closed Captioning Project &middot; CA-T Initiative &middot; Prince of Songkla University
+    </footer>
+
+    <script>
+        // CSRF helper shared by every page in this layout. Reads the token
+        // from the <meta name="csrf-token"> tag and adds an X-CSRFToken
+        // header to every state-changing AJAX request.
+        window.ccCsrfToken = (function () {
+            const tag = document.querySelector('meta[name="csrf-token"]');
+            return tag ? tag.getAttribute('content') : '';
+        })();
+
+        window.ccFetch = function (input, init) {
+            init = init || {};
+            const headers = new Headers(init.headers || {});
+            if (window.ccCsrfToken) headers.set('X-CSRFToken', window.ccCsrfToken);
+            init.headers = headers;
+            return fetch(input, init);
+        };
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

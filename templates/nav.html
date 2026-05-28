@@ -24,3 +24,19 @@
     {% endif %}
   </ul>
 </nav>
+{# Render queued flash messages once on whichever legacy page renders next.
+   Without this every legacy page that doesn't read get_flashed_messages
+   itself (e.g. /upload after a successful login) would leave the flash in
+   the session, where it then surfaces on a later, unrelated visit to
+   /login or /register. #}
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="flash-stack" style="margin: 12px auto 0; max-width: 720px;">
+      {% for category, message in messages %}
+        <p class="flash flash--{{ category if category in ['info','success','warning','danger'] else 'info' }}">
+          {{ message }}
+        </p>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}

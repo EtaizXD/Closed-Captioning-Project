@@ -1,0 +1,29 @@
+<nav class="app-nav">
+    <div class="app-nav__inner">
+        <a class="app-nav__brand"
+           href="{% if current_user.is_authenticated %}{{ url_for('new_upload') }}{% else %}{{ url_for('new_home') }}{% endif %}">
+            <img src="{{ url_for('static', filename='images/cc.png') }}" alt="CC">
+            <span>CA-Informed Closed Captioning Tool</span>
+        </a>
+
+        <div class="app-nav__links">
+            {% if current_user.is_authenticated %}
+                <a class="app-nav__link {% if active_page == 'upload' %}active{% endif %}"
+                   href="{{ url_for('new_upload') }}">Upload</a>
+                <a class="app-nav__link {% if active_page == 'files' %}active{% endif %}"
+                   href="{{ url_for('new_your_files') }}">Files</a>
+            {% endif %}
+            <a class="app-nav__link {% if active_page == 'about' %}active{% endif %}"
+               href="{{ url_for('new_about') }}">About</a>
+            <a class="app-nav__link" href="https://ca-t.psu.ac.th/" target="_blank" rel="noopener">Contact</a>
+
+            {% if current_user.is_authenticated %}
+                <span class="app-nav__user">{{ current_user.username }}</span>
+                <a class="app-nav__link" href="{{ url_for('new_logout') }}">Sign Out</a>
+            {% else %}
+                <a class="app-nav__link {% if active_page == 'login' %}active{% endif %}"
+                   href="{{ url_for('new_login') }}">Sign In</a>
+            {% endif %}
+        </div>
+    </div>
+</nav>

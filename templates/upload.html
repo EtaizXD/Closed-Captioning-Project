@@ -5,16 +5,62 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CC Stress</title>
+    <title>CA-Informed Closed Captioning Tool</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
     <style>
-        /* iOS-like progress bar container */
+        .sensitivity-group {
+            display: block;
+            max-width: 520px;
+            margin: 18px auto 0;
+            padding: 14px 18px;
+            background: #f5f8ff;
+            border: 1px solid #cfd9ee;
+            border-radius: 10px;
+            text-align: left;
+            font-size: 14px;
+            color: #2b3d5c;
+        }
+
+        .sensitivity-group__title {
+            display: block;
+            margin: 0 0 8px;
+            font-weight: 600;
+            color: #1a2540;
+        }
+
+        .sensitivity-group__option {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 6px 0;
+        }
+
+        .sensitivity-group__option input[type="radio"] {
+            margin-top: 3px;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .sensitivity-group__option label {
+            cursor: pointer;
+            line-height: 1.35;
+        }
+
+        .sensitivity-group__option .sensitivity-hint {
+            display: block;
+            margin-top: 2px;
+            font-size: 12px;
+            color: #5b6b85;
+        }
+
         #progressBarContainer {
             display: none;
-            width: 25%;
+            width: min(640px, 80%);
             background-color: #e0e0e0;
-            border-radius: 10px;
-            height: 1px;
+            border-radius: 999px;
+            height: 10px;
             margin-top: 20px;
             margin-left: auto;
             margin-right: auto;
@@ -23,25 +69,29 @@
             font-size: 14px;
         }
 
-        /* iOS-like progress bar */
         #progressBar {
             font-size: 12px;
             width: 0%;
-            height: 1px;
+            height: 10px;
             background-color: #007aff;
-            border-radius: 10px;
+            border-radius: 999px;
             transition: width 0.2s ease;
             position: absolute;
             left: 0;
             top: 0;
         }
 
-        /* Separate percentage display */
         #progressPercentage {
             text-align: center;
             margin-top: 10px;
             font-size: 14px;
             color: #007aff;
+        }
+
+        #uploadStatus {
+            min-height: 24px;
+            margin-top: 16px;
+            color: #555;
         }
     </style>
 </head>
@@ -51,9 +101,9 @@
     {% include 'nav.html' %}
 
     <div>
-        <h1 class="header"><u>Closed</u> <u>Cap</u>tions <br> with <u>Stressed</u> <u>Syl</u>lable <u>High</u>lights</h1>
+        <h1 class="header">CA-Informed Closed Captioning Tool</h1>
         <p class="description">
-            An online audio transcription engine to generate <br> closed caption files with stressed syllables being highlighted.
+            Upload a video or audio file to generate closed captions <br> with highlighted prosodic features.
         </p>
 
         <!-- Display error message, if any -->
@@ -65,52 +115,136 @@
         <!-- Clear session message after displaying -->
         {% set _ = session.pop('message', None) %}
 
-        <!-- File upload form (initially hidden) -->
         <form id="uploadForm" method="POST" enctype="multipart/form-data" action="{{ url_for('upload') }}">
             {{ form.hidden_tag() }}
-            <input type="file" name="file" id="fileInput" style="display: none;"> <!-- Hidden input for file upload -->
+            <input type="file" name="file" id="fileInput" accept="video/*,audio/*" style="display: none;">
+
+            <fieldset class="sensitivity-group">
+                <legend class="sensitivity-group__title">Transcription sensitivity</legend>
+                {% set sensitivity_hints = {
+                    'off': 'Fastest, fewest false positives. Best for clear audio.',
+                    'sensitive': 'Catches quiet speech by relaxing silence and confidence thresholds. Slower.',
+                    'ultra': 'Catches whispered or barely audible speech. Slowest and may hallucinate on background noise.'
+                } %}
+                {% for subfield in form.sensitivity %}
+                <div class="sensitivity-group__option">
+                    {{ subfield() }}
+                    <label for="{{ subfield.id }}">
+                        {{ subfield.label.text }}
+                        <span class="sensitivity-hint">{{ sensitivity_hints.get(subfield.data, '') }}</span>
+                    </label>
+                </div>
+                {% endfor %}
+            </fieldset>
         </form>
 
-        <button id="selectFileButton">Upload audio file</button>
+        <button id="selectFileButton">Upload video file</button>
 
-        <!-- Progress bar container -->
         <div id="progressBarContainer">
             <div id="progressBar"></div>
         </div>
         <div id="progressPercentage"></div>
+        <div id="uploadStatus"></div>
 
         <script>
-            document.getElementById("selectFileButton").addEventListener("click", function () {
-                console.log("Button clicked"); // To verify the click is detected
-                document.getElementById("fileInput").click(); // Show the file dialog
+            const selectFileButton = document.getElementById("selectFileButton");
+            const fileInput = document.getElementById("fileInput");
+            const uploadForm = document.getElementById("uploadForm");
+            const progressBarContainer = document.getElementById("progressBarContainer");
+            const progressBar = document.getElementById("progressBar");
+            const progressPercentage = document.getElementById("progressPercentage");
+            const uploadStatus = document.getElementById("uploadStatus");
+
+            function setProgress(percent, message) {
+                progressBarContainer.style.display = "block";
+                const normalizedPercent = Math.max(0, Math.min(100, Math.round(percent)));
+                progressBar.style.width = normalizedPercent + "%";
+                progressPercentage.textContent = `${message} ${normalizedPercent}%`;
+            }
+
+            function pollJobStatus(jobId) {
+                const interval = setInterval(function () {
+                    fetch(`/job_status/${jobId}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.error && data.status !== "failed") {
+                                clearInterval(interval);
+                                uploadStatus.textContent = data.error;
+                                return;
+                            }
+
+                            setProgress(data.progress || 0, data.message || "Processing...");
+                            uploadStatus.textContent = data.message || "";
+
+                            if (data.status === "ready") {
+                                clearInterval(interval);
+                                window.location.href = data.redirect_url;
+                            }
+
+                            if (data.status === "failed") {
+                                clearInterval(interval);
+                                uploadStatus.textContent = data.error || "Processing failed.";
+                            }
+                        })
+                        .catch(error => {
+                            clearInterval(interval);
+                            console.error("Status error:", error);
+                            uploadStatus.textContent = "Unable to check processing status.";
+                        });
+                }, 1500);
+            }
+
+            selectFileButton.addEventListener("click", function () {
+                fileInput.click();
             });
 
-            // Submit the form and show progress bar when a file is selected
-            document.getElementById("fileInput").addEventListener("change", function () {
-                console.log("File selected"); // To verify the change event
+            fileInput.addEventListener("change", function () {
+                if (!fileInput.files.length) {
+                    return;
+                }
 
-                // Show the progress bar and percentage
-                document.getElementById("progressBarContainer").style.display = "block";
-                document.getElementById("progressPercentage").textContent = "Uploading... 0%";
+                selectFileButton.disabled = true;
+                uploadStatus.textContent = "Starting upload...";
+                setProgress(0, "Uploading...");
 
-                // Speed settings for 5 minutes duration
-                let updateInterval = 3000; // Time between updates in milliseconds (3000ms = 3 seconds)
-                let incrementValue = 1;    // Percentage increment per update (1% each time)
+                const formData = new FormData(uploadForm);
+                const xhr = new XMLHttpRequest();
 
-                let progressBar = document.getElementById("progressBar");
-                let progressPercentage = document.getElementById("progressPercentage");
-                let width = 0;
-                let interval = setInterval(function () {
-                    if (width >= 100) {
-                        clearInterval(interval);
-                    } else {
-                        width += incrementValue;
-                        progressBar.style.width = width + '%';
-                        progressPercentage.textContent = "Uploading... " + width + "%";
+                xhr.upload.addEventListener("progress", function (event) {
+                    if (event.lengthComputable) {
+                        const percent = (event.loaded / event.total) * 100;
+                        setProgress(percent, "Uploading...");
                     }
-                }, updateInterval);
+                });
 
-                document.getElementById("uploadForm").submit(); // Submit the form on file selection
+                xhr.addEventListener("load", function () {
+                    selectFileButton.disabled = false;
+
+                    let data = {};
+                    try {
+                        data = JSON.parse(xhr.responseText);
+                    } catch (error) {
+                        uploadStatus.textContent = "Upload completed, but the server returned an invalid response.";
+                        return;
+                    }
+
+                    if (xhr.status >= 200 && xhr.status < 300 && data.job_id) {
+                        setProgress(5, "Processing...");
+                        uploadStatus.textContent = "Upload complete. Processing captions...";
+                        pollJobStatus(data.job_id);
+                    } else {
+                        uploadStatus.textContent = data.error || "Upload failed.";
+                    }
+                });
+
+                xhr.addEventListener("error", function () {
+                    selectFileButton.disabled = false;
+                    uploadStatus.textContent = "Upload failed due to a network error.";
+                });
+
+                xhr.open("POST", uploadForm.action);
+                xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+                xhr.send(formData);
             });
         </script>
     </div>

@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+venv/
+
+# Secrets / local config -- NEVER commit
+.env
+.env.*
+!.env.example
+
+# Runtime data -- NEVER commit
+app.db
+app.db-journal
+storage/
+
+# Logs
+*.log
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
