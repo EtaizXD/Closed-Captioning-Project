@@ -178,7 +178,18 @@
                     }
 
                     setProgress(data.progress || 0, data.message || "Processing...");
-                    uploadStatus.textContent = data.message || "";
+
+                    let statusText = data.message || "";
+                    if ((data.status === "queued" || data.status === "uploaded")
+                        && typeof data.queue_position === "number") {
+                        if (data.queue_ahead > 0) {
+                            statusText = `In queue: ${data.queue_ahead} job(s) ahead of you `
+                                + `(you are #${data.queue_position} in line).`;
+                        } else {
+                            statusText = "You're next in line. Processing will start shortly...";
+                        }
+                    }
+                    uploadStatus.textContent = statusText;
 
                     if (data.status === "ready") {
                         clearInterval(interval);

@@ -5,6 +5,16 @@ import numpy as np
 from audio_analyzer import AudioAnalyzer
 
 
+# Maximum duration (seconds) for a single subtitle cue. Whisper segments can
+# run ~10s which produces long, hard-to-read captions, so any segment longer
+# than this is split into smaller cues at word boundaries. Configurable via
+# the ``SUBTITLE_MAX_DURATION`` environment variable.
+try:
+    MAX_CUE_DURATION = float(os.environ.get("SUBTITLE_MAX_DURATION", "5.0"))
+except ValueError:
+    MAX_CUE_DURATION = 5.0
+
+
 def format_time(seconds):
     """Helper function to format time for VTT files"""
     whole_seconds = int(seconds)
@@ -213,8 +223,46 @@ class SentenceRecognizer:
             print(f"Error in _apply_stress_formatting: {str(e)}")
             return text
 
+    @staticmethod
+    def _split_into_chunks(words, stress_list, max_duration=MAX_CUE_DURATION):
+        """Split a segment's ``words`` (with aligned ``stress_list``) into
+        consecutive chunks each no longer than ``max_duration`` seconds.
+
+        Splits only happen at word boundaries: a word is never cut in half. A
+        new chunk starts when adding the next word would push the chunk past
+        ``max_duration`` from its own start time. Each returned chunk is a
+        ``(chunk_words, chunk_stress)`` tuple preserving original order.
+        """
+        chunks = []
+        cur_words = []
+        cur_stress = []
+        chunk_start = None
+
+        for word_data, stress in zip(words, stress_list):
+            if chunk_start is None:
+                chunk_start = word_data['start']
+            # Close the current chunk before adding this word if it would
+            # exceed the limit (but only when the chunk already has content,
+            # so a single over-long word still produces one cue).
+            if cur_words and (word_data['end'] - chunk_start) > max_duration:
+                chunks.append((cur_words, cur_stress))
+                cur_words = []
+                cur_stress = []
+                chunk_start = word_data['start']
+            cur_words.append(word_data)
+            cur_stress.append(stress)
+
+        if cur_words:
+            chunks.append((cur_words, cur_stress))
+
+        return chunks
+
     def generate_vtt(self, vtt_filename):
-        """Generate VTT file with stress formatting."""
+        """Generate VTT file with stress formatting.
+
+        Each Whisper segment is split into cues no longer than
+        ``MAX_CUE_DURATION`` seconds so captions stay short and readable.
+        """
         self.collect_data()
         stress_lists = self._calculate_stress()
 
@@ -224,18 +272,39 @@ class SentenceRecognizer:
                 continue
             if i >= len(stress_lists):
                 break
+            stress_list = stress_lists[i]
             text_index = self.sentence_indices[i] if i < len(self.sentence_indices) else i
             if text_index >= len(self.text_sentences):
                 continue
             segment_text = self.text_sentences[text_index]
 
-            formatted_text = self._apply_stress_formatting(segment_text, stress_lists[i])
-            if not formatted_text:
-                continue
+            chunks = self._split_into_chunks(sentence, stress_list)
 
-            start_time = sentence[0]['start']
-            end_time = sentence[-1]['end']
-            formatted_segments.append((start_time, end_time, formatted_text))
+            if len(chunks) <= 1:
+                # Whole segment already fits within the limit: keep the
+                # original segment text + stress exactly as before.
+                formatted_text = self._apply_stress_formatting(segment_text, stress_list)
+                if not formatted_text:
+                    continue
+                formatted_segments.append(
+                    (sentence[0]['start'], sentence[-1]['end'], formatted_text)
+                )
+            else:
+                # Long segment: emit one cue per chunk. Reconstruct each
+                # chunk's text from its word tokens (faster-whisper word
+                # tokens carry their leading space) so spacing stays correct.
+                for chunk_words, chunk_stress in chunks:
+                    if not chunk_words:
+                        continue
+                    chunk_text = "".join(w['original'] for w in chunk_words).strip()
+                    if not chunk_text:
+                        continue
+                    formatted_text = self._apply_stress_formatting(chunk_text, chunk_stress)
+                    if not formatted_text:
+                        continue
+                    formatted_segments.append(
+                        (chunk_words[0]['start'], chunk_words[-1]['end'], formatted_text)
+                    )
 
         with open(vtt_filename, "w", encoding='utf-8') as f:
             f.write("WEBVTT\n\n")

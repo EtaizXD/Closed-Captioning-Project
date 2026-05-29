@@ -32,6 +32,7 @@ import os
 import datetime
 import json
 import mimetypes
+import queue
 import re
 import shutil
 import subprocess
@@ -1208,6 +1209,53 @@ def process_media_job(job_id, user_id, audio_id, media_path, media_kind, origina
         shutil.rmtree(job_temp_dir, ignore_errors=True)
 
 
+# ---------------------------------------------------------------------------
+# Single-worker processing queue.
+#
+# Uploads no longer spawn a thread each; instead they enqueue the job here and
+# return immediately. ONE dedicated worker thread drains the queue and runs
+# ``process_media_job`` strictly one at a time. This keeps memory/GPU usage
+# bounded (faster-whisper loads one model at a time) and gives every waiting
+# user a deterministic queue position.
+#
+# DEPLOYMENT NOTE: this is an in-process queue, so the app MUST run as a
+# SINGLE process (e.g. ``waitress-serve`` with threads, or ``gunicorn -w 1``).
+# Running multiple worker processes would give each its own queue + worker.
+# ---------------------------------------------------------------------------
+_job_queue = queue.Queue()
+
+
+def _job_worker():
+    while True:
+        task = _job_queue.get()
+        try:
+            process_media_job(*task["args"], **task["kwargs"])
+        except Exception as err:  # never let one bad job kill the worker
+            print("Job worker error:", err)
+            traceback.print_exc()
+            try:
+                update_job(
+                    task.get("job_id"),
+                    "failed",
+                    100,
+                    "Processing failed",
+                    error=str(err),
+                )
+            except Exception:
+                pass
+        finally:
+            _job_queue.task_done()
+
+
+def enqueue_job(job_id, args, kwargs=None):
+    """Add a job to the processing queue (FIFO, one-at-a-time)."""
+    _job_queue.put({"job_id": job_id, "args": args, "kwargs": kwargs or {}})
+
+
+_job_worker_thread = threading.Thread(target=_job_worker, name="job-worker", daemon=True)
+_job_worker_thread.start()
+
+
 @app.route("/upload", methods=["GET", "POST"])
 @login_required
 def upload():
@@ -1244,19 +1292,17 @@ def upload():
                     media_kind,
                     stored_file_name,
                 )
-                update_job(job_id, "queued", 5, "File uploaded. Waiting to process", audio_id=audio_id)
+                update_job(job_id, "queued", 5, "File uploaded. Waiting in queue", audio_id=audio_id)
                 sensitivity = form.sensitivity.data if form.sensitivity.data in SENSITIVITY_VALUES else "off"
-                worker = threading.Thread(
-                    target=process_media_job,
+                enqueue_job(
+                    job_id,
                     args=(job_id, current_user.id, audio_id, file_path, media_kind, file_name),
                     kwargs={"sensitivity": sensitivity},
-                    daemon=False,
                 )
-                worker.start()
                 submitted = True
                 if request.headers.get("X-Requested-With") == "XMLHttpRequest":
                     return jsonify({"job_id": job_id, "audio_id": audio_id}), 202
-                flash("File uploaded. Caption processing has started.", "success")
+                flash("File uploaded. Caption processing has been queued.", "success")
                 return redirect(url_for("your_files"))
 
             except Exception as err:
@@ -1313,14 +1359,12 @@ def retry_job(audio_id):
 
     job_id = uuid.uuid4().hex
     create_job(job_id, current_user.id)
-    update_job(job_id, "queued", 5, "Retrying processing", audio_id=audio_id)
-    worker = threading.Thread(
-        target=process_media_job,
+    update_job(job_id, "queued", 5, "Retry queued", audio_id=audio_id)
+    enqueue_job(
+        job_id,
         args=(job_id, current_user.id, audio_id, media_path, media_kind, file_name),
         kwargs={"skip_video_conversion": skip_video_conversion},
-        daemon=False,
     )
-    worker.start()
     return jsonify({"job_id": job_id, "audio_id": audio_id}), 202
 
 
@@ -1331,14 +1375,14 @@ def job_status(job_id):
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT status, progress, message, error, audio_id FROM processing_jobs WHERE job_id = ? AND user_id = ?",
+            "SELECT status, progress, message, error, audio_id, created_at FROM processing_jobs WHERE job_id = ? AND user_id = ?",
             (job_id, current_user.id),
         )
         result = cursor.fetchone()
         if not result:
             return jsonify({"error": "Job not found"}), 404
 
-        status, progress, message, error, audio_id = result
+        status, progress, message, error, audio_id, created_at = result
         response = {
             "status": status,
             "progress": progress,
@@ -1346,6 +1390,26 @@ def job_status(job_id):
             "error": error,
             "audio_id": audio_id,
         }
+
+        # Queue visibility: while a job waits, tell the user how many jobs are
+        # ahead of it so they get a deterministic "you are Nth in line".
+        # ``queue_ahead`` counts the one currently processing (if any) plus all
+        # queued jobs created before this one. ``queue_position`` is 1-based
+        # (1 == next up). Processing happens strictly one-at-a-time, so this is
+        # an accurate ordering.
+        if status in ("queued", "uploaded"):
+            ahead_processing = conn.execute(
+                "SELECT COUNT(*) FROM processing_jobs WHERE status = 'processing'"
+            ).fetchone()[0]
+            ahead_queued = conn.execute(
+                "SELECT COUNT(*) FROM processing_jobs "
+                "WHERE status IN ('queued', 'uploaded') AND created_at < ? AND job_id != ?",
+                (created_at, job_id),
+            ).fetchone()[0]
+            ahead = ahead_processing + ahead_queued
+            response["queue_ahead"] = ahead
+            response["queue_position"] = ahead + 1
+
         if status == "ready" and audio_id:
             response["redirect_url"] = url_for("edit", audio_id=audio_id)
         return jsonify(response)
@@ -1513,19 +1577,17 @@ def new_upload():
                     media_kind,
                     stored_file_name,
                 )
-                update_job(job_id, "queued", 5, "File uploaded. Waiting to process", audio_id=audio_id)
+                update_job(job_id, "queued", 5, "File uploaded. Waiting in queue", audio_id=audio_id)
                 sensitivity = form.sensitivity.data if form.sensitivity.data in SENSITIVITY_VALUES else "off"
-                worker = threading.Thread(
-                    target=process_media_job,
+                enqueue_job(
+                    job_id,
                     args=(job_id, current_user.id, audio_id, file_path, media_kind, file_name),
                     kwargs={"sensitivity": sensitivity},
-                    daemon=False,
                 )
-                worker.start()
                 submitted = True
                 if request.headers.get("X-Requested-With") == "XMLHttpRequest":
                     return jsonify({"job_id": job_id, "audio_id": audio_id}), 202
-                flash("File uploaded. Caption processing has started.", "success")
+                flash("File uploaded. Caption processing has been queued.", "success")
                 return redirect(url_for("new_your_files"))
 
             except Exception as err:
