@@ -7,6 +7,7 @@ from flask import (
     flash,
     session,
     send_file,
+    send_from_directory,
     make_response,
     abort,
     jsonify,
@@ -433,10 +434,20 @@ def check_auth():
         return redirect(url_for("login", next=url_for("check_auth")))
 
 
-# Route for the home page
+# Route for the home page — start with the project preview
 @app.route("/")
 def home():
-    return render_template("home.html")
+    return redirect("/preview/")
+
+
+@app.route("/preview/")
+def preview():
+    return send_file(os.path.join(BASE_DIR, "preview", "index.html"))
+
+
+@app.route("/preview/<path:filename>")
+def preview_file(filename):
+    return send_from_directory(os.path.join(BASE_DIR, "preview"), filename)
 
 
 def _safe_next_url(next_page):

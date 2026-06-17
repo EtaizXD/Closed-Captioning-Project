@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preview — CA-Informed Closed Captioning Tool</title>
+    <link rel="stylesheet" href="../static/css/new.css">
+    <style>
+        .preview-hero {
+            text-align: center;
+            padding: 48px 16px 24px;
+        }
+        .preview-hero h1 {
+            font-size: 36px;
+            margin-bottom: 8px;
+        }
+        .preview-hero p {
+            color: var(--text-muted);
+            max-width: 640px;
+            margin: 0 auto 28px;
+            font-size: 17px;
+        }
+        .preview-video-card {
+            max-width: 960px;
+            margin: 0 auto 28px;
+        }
+        .preview-actions {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            padding-bottom: 48px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="app-nav">
+        <div class="app-nav__inner">
+            <a class="app-nav__brand" href="../new/">
+                <img src="../static/images/cc.png" alt="CC">
+                <span>CA-Informed Closed Captioning Tool</span>
+            </a>
+            <div class="app-nav__links">
+                <a class="app-nav__link" href="https://ca-t.psu.ac.th/" target="_blank" rel="noopener">Contact</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="page">
+        <section class="preview-hero">
+            <h1>Project Preview</h1>
+            <p>See how the CA-Informed Closed Captioning Tool works before you start using it.</p>
+        </section>
+
+        <section class="card preview-video-card">
+            <div class="media-frame">
+                <video controls preload="metadata" poster="">
+                    <source src="./preview.mp4" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+        </section>
+
+        <div class="preview-actions">
+            <a class="btn btn--lg" href="../new/">Enter Project</a>
+            <a class="btn btn--lg btn--ghost" href="../new/about">Learn More</a>
+        </div>
+    </main>
+
+    <footer class="app-footer">
+        Closed Captioning Project &middot; CA-T Initiative &middot; Prince of Songkla University
+    </footer>
+</body>
+</html>

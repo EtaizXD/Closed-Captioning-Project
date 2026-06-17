@@ -11,6 +11,7 @@ venv/
 app.db
 app.db-journal
 storage/
+preview/preview.mp4
 
 # Logs
 *.log
